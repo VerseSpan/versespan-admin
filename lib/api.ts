@@ -317,9 +317,9 @@ export const api = {
 		const params = new URLSearchParams({ host: data.host, port: String(data.port) });
 		return apiRequest(`/api/propresenter/settings?${params}`, { method: "POST" });
 	},
-	proPresenterDownloadBridgeUrl(churchId: number): string {
+	proPresenterDownloadBridgeUrl(churchId: number, platform: "windows" | "mac"): string {
 		const token = getToken() || "";
-		return `${API_BASE_URL}/api/propresenter/download-bridge/${churchId}?token=${encodeURIComponent(token)}`;
+		return `${API_BASE_URL}/api/propresenter/download-bridge/${churchId}?token=${encodeURIComponent(token)}&platform=${platform}`;
 	},
 	async proPresenterConnectionCode(churchId: number): Promise<string> {
 		const data = await apiRequest<{ connection_code: string }>(`/api/propresenter/connection-code/${churchId}`);

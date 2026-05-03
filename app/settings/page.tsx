@@ -146,10 +146,16 @@ export default function SettingsPage() {
 
           <div className="flex flex-wrap gap-3 mt-4">
             <a
-              href={api.proPresenterDownloadBridgeUrl(getChurchId())}
+              href={api.proPresenterDownloadBridgeUrl(getChurchId(), "windows")}
               className="bg-purple-600 text-white px-4 py-2 rounded shadow hover:bg-purple-700 transition font-semibold text-sm"
             >
-              Download Bridge App (.exe)
+              Download for Windows (.exe)
+            </a>
+            <a
+              href={api.proPresenterDownloadBridgeUrl(getChurchId(), "mac")}
+              className="bg-purple-600 text-white px-4 py-2 rounded shadow hover:bg-purple-700 transition font-semibold text-sm"
+            >
+              Download for macOS (.zip)
             </a>
             <button
               onClick={async () => {
@@ -217,7 +223,7 @@ export default function SettingsPage() {
               How to set up
             </summary>
             <ol className="mt-2 text-sm text-gray-600 space-y-1 list-decimal list-inside">
-              <li>Click <strong>Download Bridge App (.exe)</strong> and copy it to the ProPresenter computer.</li>
+              <li>Click <strong>Download for Windows</strong> or <strong>Download for macOS</strong> and copy it to the ProPresenter computer.</li>
               <li>Run <strong>VerbBridge-Bridge.exe</strong> — it will appear in the system tray.</li>
               <li>On first launch, a dialog asks for your connection code.</li>
               <li>Click <strong>Show Connection Code</strong> above, copy it, and paste it into the dialog.</li>
