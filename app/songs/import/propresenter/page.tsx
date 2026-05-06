@@ -52,7 +52,7 @@ export default function ImportFromProPresenterPage() {
         if (!status.feature_enabled) router.replace("/songs");
         if (status.bridge_connected) {
           loadLibraries();
-          loadPlaylists();
+          // Playlists loaded lazily when user clicks the Playlists tab
         }
       })
       .catch(() => router.replace("/songs"));
@@ -97,8 +97,10 @@ export default function ImportFromProPresenterPage() {
     setSelectedId("");
     setPresentations([]);
     setSelectedPres(null);
-    // Auto-select if only one option
-    if (s === "libraries" && libraries.length === 1) {
+    if (s === "playlists" && playlists.length === 0) {
+      // Lazy-load playlists the first time the tab is clicked
+      loadPlaylists();
+    } else if (s === "libraries" && libraries.length === 1) {
       loadPresentations("libraries", libraries[0].id);
     } else if (s === "playlists" && playlists.length === 1) {
       loadPresentations("playlists", playlists[0].id);
