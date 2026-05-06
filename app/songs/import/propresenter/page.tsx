@@ -324,16 +324,16 @@ export default function ImportFromProPresenterPage() {
         </div>
 
         {/* Fetch lyrics button */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <button
             type="button"
             onClick={fetchLyrics}
             disabled={fetchingLyrics}
             className="px-4 py-1.5 rounded bg-purple-100 text-purple-800 hover:bg-purple-200 font-semibold text-sm disabled:opacity-50 transition"
           >
-            {fetchingLyrics ? "Fetching..." : "Fetch Lyrics from ProPresenter"}
+            {fetchingLyrics ? "Fetching..." : "Fetch from Active Slide"}
           </button>
-          <span className="text-xs text-gray-400">or paste manually below</span>
+          <span className="text-xs text-gray-400">Navigate to this song in ProPresenter first, then click Fetch · or paste manually below</span>
         </div>
 
         {/* Sections */}
