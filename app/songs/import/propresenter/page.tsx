@@ -189,7 +189,8 @@ export default function ImportFromProPresenterPage() {
           text_target: s.text_target || undefined,
         })),
       });
-      await api.rebuildSongIndex();
+      // Rebuild index best-effort — don't block navigation on failure
+      api.rebuildSongIndex().catch(() => {});
       router.push("/songs");
     } catch (err: unknown) {
       setError((err as Error).message || "Import failed");
