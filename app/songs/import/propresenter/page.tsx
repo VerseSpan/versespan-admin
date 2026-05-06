@@ -39,6 +39,7 @@ export default function ImportFromProPresenterPage() {
     { section_number: 1, section_name: "Verse 1", text_source: "", text_target: "" },
   ]);
   const [fetchingLyrics, setFetchingLyrics] = useState(false);
+  const [translating, setTranslating] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<"browse" | "edit">("browse");
@@ -131,6 +132,28 @@ export default function ImportFromProPresenterPage() {
       setError("Could not fetch lyrics — paste manually below.");
     } finally {
       setFetchingLyrics(false);
+    }
+  }
+
+  async function translateLyrics() {
+    const toTranslate = sections.filter(s => s.text_source.trim());
+    if (toTranslate.length === 0) return;
+    setTranslating(true);
+    setError(null);
+    try {
+      const res = await api.translateLyrics(toTranslate.map(s => s.text_source));
+      setSections(prev => {
+        let translationIdx = 0;
+        return prev.map(s => {
+          if (!s.text_source.trim()) return s;
+          const translated = res.translations[translationIdx++] || "";
+          return { ...s, text_target: translated };
+        });
+      });
+    } catch {
+      setError("Translation failed — paste English lyrics manually.");
+    } finally {
+      setTranslating(false);
     }
   }
 
@@ -323,17 +346,25 @@ export default function ImportFromProPresenterPage() {
           </div>
         </div>
 
-        {/* Fetch lyrics button */}
+        {/* Fetch + Translate buttons */}
         <div className="flex items-center gap-3 flex-wrap">
           <button
             type="button"
             onClick={fetchLyrics}
-            disabled={fetchingLyrics}
+            disabled={fetchingLyrics || translating}
             className="px-4 py-1.5 rounded bg-purple-100 text-purple-800 hover:bg-purple-200 font-semibold text-sm disabled:opacity-50 transition"
           >
             {fetchingLyrics ? "Fetching..." : "Fetch from Active Slide"}
           </button>
-          <span className="text-xs text-gray-400">Navigate to this song in ProPresenter first, then click Fetch · or paste manually below</span>
+          <button
+            type="button"
+            onClick={translateLyrics}
+            disabled={translating || fetchingLyrics || sections.every(s => !s.text_source.trim())}
+            className="px-4 py-1.5 rounded bg-blue-100 text-blue-800 hover:bg-blue-200 font-semibold text-sm disabled:opacity-50 transition"
+          >
+            {translating ? "Translating..." : "Translate to English"}
+          </button>
+          <span className="text-xs text-gray-400">Navigate to the song in ProPresenter first, then Fetch · or paste manually</span>
         </div>
 
         {/* Sections */}

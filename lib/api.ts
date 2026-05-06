@@ -295,6 +295,14 @@ export const api = {
 		return apiRequest("/api/songs/rebuild-index", { method: "POST" });
 	},
 
+	// Song Translation
+	async translateLyrics(texts: string[], sourceLang = "es", targetLang = "en"): Promise<{ translations: string[] }> {
+		return apiRequest("/api/songs/translate-lyrics", {
+			method: "POST",
+			body: JSON.stringify({ texts, source_lang: sourceLang, target_lang: targetLang }),
+		});
+	},
+
 	// Song Export
 	async exportAllSongs(churchId: number = getChurchId()) {
 		return apiRequest(`/api/songs/export/all?church_id=${churchId}`, { method: "GET" });
