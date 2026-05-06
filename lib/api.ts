@@ -310,6 +310,12 @@ export const api = {
 	async proPresenterLibrary(id: string) {
 		return apiRequest(`/api/propresenter/library/${encodeURIComponent(id)}`, { method: "GET" });
 	},
+	async proPresenterPlaylists() {
+		return apiRequest("/api/propresenter/playlists", { method: "GET" });
+	},
+	async proPresenterPlaylist(id: string) {
+		return apiRequest(`/api/propresenter/playlist/${encodeURIComponent(id)}`, { method: "GET" });
+	},
 	async proPresenterPresentation(uuid: string) {
 		return apiRequest(`/api/propresenter/presentation/${encodeURIComponent(uuid)}`, { method: "GET" });
 	},

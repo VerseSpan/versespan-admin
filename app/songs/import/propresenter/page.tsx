@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, getChurchId } from "@/lib/api";
 
-interface Library {
+interface SourceItem {
   id: string;
   name: string;
 }
@@ -21,12 +21,16 @@ interface Section {
   text_target: string;
 }
 
+type Source = "libraries" | "playlists";
+
 export default function ImportFromProPresenterPage() {
   const router = useRouter();
   const [featureEnabled, setFeatureEnabled] = useState<boolean | null>(null);
   const [bridgeConnected, setBridgeConnected] = useState(false);
-  const [libraries, setLibraries] = useState<Library[]>([]);
-  const [selectedLib, setSelectedLib] = useState("");
+  const [source, setSource] = useState<Source>("libraries");
+  const [libraries, setLibraries] = useState<SourceItem[]>([]);
+  const [playlists, setPlaylists] = useState<SourceItem[]>([]);
+  const [selectedId, setSelectedId] = useState("");
   const [presentations, setPresentations] = useState<Presentation[]>([]);
   const [selectedPres, setSelectedPres] = useState<Presentation | null>(null);
   const [title, setTitle] = useState("");
@@ -46,7 +50,10 @@ export default function ImportFromProPresenterPage() {
         setFeatureEnabled(status.feature_enabled);
         setBridgeConnected(status.bridge_connected);
         if (!status.feature_enabled) router.replace("/songs");
-        if (status.bridge_connected) loadLibraries();
+        if (status.bridge_connected) {
+          loadLibraries();
+          loadPlaylists();
+        }
       })
       .catch(() => router.replace("/songs"));
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -54,23 +61,48 @@ export default function ImportFromProPresenterPage() {
 
   async function loadLibraries() {
     try {
-      const data = await api.proPresenterLibraries() as { libraries: Library[] };
+      const data = await api.proPresenterLibraries() as { libraries: SourceItem[] };
       setLibraries(data.libraries || []);
       if (data.libraries?.length === 1) {
-        setSelectedLib(data.libraries[0].id);
-        loadPresentations(data.libraries[0].id);
+        setSelectedId(data.libraries[0].id);
+        loadPresentations("libraries", data.libraries[0].id);
       }
     } catch {}
   }
 
-  async function loadPresentations(libId: string) {
-    setSelectedLib(libId);
+  async function loadPlaylists() {
+    try {
+      const data = await api.proPresenterPlaylists() as { playlists: SourceItem[] };
+      setPlaylists(data.playlists || []);
+    } catch {}
+  }
+
+  async function loadPresentations(src: Source, id: string) {
+    setSelectedId(id);
     setPresentations([]);
     setSelectedPres(null);
     try {
-      const data = await api.proPresenterLibrary(libId) as { presentations: Presentation[] };
-      setPresentations(data.presentations || []);
+      if (src === "libraries") {
+        const data = await api.proPresenterLibrary(id) as { presentations: Presentation[] };
+        setPresentations(data.presentations || []);
+      } else {
+        const data = await api.proPresenterPlaylist(id) as { presentations: Presentation[] };
+        setPresentations(data.presentations || []);
+      }
     } catch {}
+  }
+
+  function switchSource(s: Source) {
+    setSource(s);
+    setSelectedId("");
+    setPresentations([]);
+    setSelectedPres(null);
+    // Auto-select if only one option
+    if (s === "libraries" && libraries.length === 1) {
+      loadPresentations("libraries", libraries[0].id);
+    } else if (s === "playlists" && playlists.length === 1) {
+      loadPresentations("playlists", playlists[0].id);
+    }
   }
 
   async function selectPresentation(pres: Presentation) {
@@ -162,6 +194,11 @@ export default function ImportFromProPresenterPage() {
   }
 
   // ── Browse step ──────────────────────────────────────────────────────────
+  const sourceItems = source === "libraries" ? libraries : playlists;
+  const emptyHint = selectedId
+    ? `No presentations found in this ${source === "libraries" ? "library" : "playlist"}.`
+    : `Select a ${source === "libraries" ? "library" : "playlist"} to browse presentations.`;
+
   if (step === "browse") {
     return (
       <div className="max-w-3xl mx-auto space-y-6">
@@ -172,18 +209,37 @@ export default function ImportFromProPresenterPage() {
           </button>
         </div>
 
-        {/* Library picker */}
-        {libraries.length > 1 && (
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Library</label>
-            <select
-              className="border rounded px-3 py-2 text-gray-900 w-full max-w-xs"
-              value={selectedLib}
-              onChange={e => loadPresentations(e.target.value)}
+        {/* Source toggle */}
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+          {(["libraries", "playlists"] as Source[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => switchSource(s)}
+              className={`px-4 py-1.5 rounded-md text-sm font-semibold transition ${
+                source === s
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
             >
-              <option value="">Select a library...</option>
-              {libraries.map(l => (
-                <option key={l.id} value={l.id}>{l.name}</option>
+              {s === "libraries" ? "Libraries" : "Playlists"}
+            </button>
+          ))}
+        </div>
+
+        {/* Library / Playlist picker */}
+        {sourceItems.length > 1 && (
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
+              {source === "libraries" ? "Library" : "Playlist"}
+            </label>
+            <select
+              className="bg-white border border-gray-300 rounded px-3 py-2 text-gray-900 w-full max-w-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+              value={selectedId}
+              onChange={e => loadPresentations(source, e.target.value)}
+            >
+              <option value="">Select a {source === "libraries" ? "library" : "playlist"}...</option>
+              {sourceItems.map(item => (
+                <option key={item.id} value={item.id}>{item.name}</option>
               ))}
             </select>
           </div>
@@ -192,9 +248,7 @@ export default function ImportFromProPresenterPage() {
         {/* Presentation list */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           {presentations.length === 0 ? (
-            <div className="px-6 py-12 text-center text-gray-400">
-              {selectedLib ? "No presentations found in this library." : "Select a library to browse presentations."}
-            </div>
+            <div className="px-6 py-12 text-center text-gray-400">{emptyHint}</div>
           ) : (
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
