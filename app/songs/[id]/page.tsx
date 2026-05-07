@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 
 interface SongSection {
@@ -20,7 +21,8 @@ interface Song {
   sections: SongSection[];
 }
 
-export default function SongDetailPage({ params }: { params: { id: string } }) {
+export default function SongDetailPage() {
+  const params = useParams<{ id: string }>();
   const [song, setSong] = useState<Song | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
