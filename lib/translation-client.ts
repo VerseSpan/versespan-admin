@@ -135,7 +135,7 @@ export class TranslationClient {
         // Keep-alive response
         break;
       case 'song_started':
-        console.log('[TranslationClient] Song started:', message.song_title, message.song_title_en);
+        console.log('[TranslationClient] Song started:', message.song_titles, message.song_id);
         this.config.onSongStarted?.(message);
         break;
       case 'song_ended':

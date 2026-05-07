@@ -14,19 +14,19 @@ interface Translation {
 interface SongSection {
   section_number: number;
   section_name: string;
-  text_source: string;
-  text_target: string;
+  texts: Record<string, string>;
 }
 
 interface ActiveSong {
   song_id: number;
-  song_title: string;
-  song_title_en: string;
+  song_titles: Record<string, string>;
+  source_lang: string;
+  target_lang: string;
   sections: SongSection[];
 }
 
 type PresentingState =
-  | { content_type: "song"; song_id: number | null; song_title: string; song_title_en: string | null; sections: SongSection[] }
+  | { content_type: "song"; song_id: number | null; song_titles: Record<string, string>; source_lang: string; target_lang: string; sections: SongSection[] }
   | { content_type: "scripture"; target_text: string; verse_ref: string | null; source_text: string };
 
 const CONTENT_COLORS: Record<string, string> = {
@@ -53,6 +53,7 @@ export default function WatchPage() {
   const [lastText, setLastText] = useState("");
   const [activeSong, setActiveSong] = useState<ActiveSong | null>(null);
   const [presenting, setPresenting] = useState<PresentingState | null>(null);
+  const sessionTargetLangRef = useRef("en");
   const wsRef = useRef<WebSocket | null>(null);
   const ttsEnabledRef = useRef(true);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -71,7 +72,7 @@ export default function WatchPage() {
 
     try {
       // --- Kokoro TTS via backend ---
-      const params = new URLSearchParams({ text, lang: "en" });
+      const params = new URLSearchParams({ text, lang: sessionTargetLangRef.current });
       const res = await fetch(`${apiUrl}/api/tts?${params}`);
       if (!res.ok) throw new Error("TTS endpoint unavailable");
 
@@ -150,12 +151,15 @@ export default function WatchPage() {
 
           if (msg.type === "presenting") {
             if (msg.content_type === "song") {
+              const tgt = msg.target_lang || "en";
               const song = {
                 song_id: msg.song_id ?? null,
-                song_title: msg.song_title || "",
-                song_title_en: msg.song_title_en || msg.song_title || "",
+                song_titles: msg.song_titles || {},
+                source_lang: msg.source_lang || "es",
+                target_lang: tgt,
                 sections: msg.sections || [],
               };
+              sessionTargetLangRef.current = tgt;
               activeSongRef.current = song;
               setActiveSong(song);
               currentSourceRef.current?.stop();
@@ -179,12 +183,15 @@ export default function WatchPage() {
           }
 
           if (msg.type === "song_started" && msg.song_id) {
+            const tgt = msg.target_lang || "en";
             const song = {
               song_id: msg.song_id,
-              song_title: msg.song_title || "",
-              song_title_en: msg.song_title_en || msg.song_title || "",
+              song_titles: msg.song_titles || {},
+              source_lang: msg.source_lang || "es",
+              target_lang: tgt,
               sections: msg.sections || [],
             };
+            sessionTargetLangRef.current = tgt;
             activeSongRef.current = song;
             setActiveSong(song);
             // Stop any playing audio when song mode starts
@@ -401,9 +408,11 @@ export default function WatchPage() {
             {presenting.content_type === "song" && (
               <div className="flex-1 overflow-y-auto px-5 py-6">
                 <div className="mb-6">
-                  <p className={`${fontSizeClass} font-bold text-white`}>{presenting.song_title_en || presenting.song_title}</p>
-                  {presenting.song_title_en && presenting.song_title !== presenting.song_title_en && (
-                    <p className="text-purple-300 text-sm mt-1">{presenting.song_title}</p>
+                  <p className={`${fontSizeClass} font-bold text-white`}>
+                    {presenting.song_titles[presenting.target_lang] || presenting.song_titles[presenting.source_lang] || Object.values(presenting.song_titles)[0] || ""}
+                  </p>
+                  {presenting.song_titles[presenting.source_lang] && presenting.song_titles[presenting.target_lang] && presenting.song_titles[presenting.source_lang] !== presenting.song_titles[presenting.target_lang] && (
+                    <p className="text-purple-300 text-sm mt-1">{presenting.song_titles[presenting.source_lang]}</p>
                   )}
                 </div>
                 <div className="space-y-5">
@@ -416,11 +425,11 @@ export default function WatchPage() {
                         </p>
                         <div className="bg-white/5 rounded-xl p-4">
                           <p className={`${fontSizeClass} leading-relaxed text-white whitespace-pre-wrap`}>
-                            {section.text_target || section.text_source}
+                            {section.texts[presenting.target_lang] || section.texts[presenting.source_lang] || Object.values(section.texts)[0] || ""}
                           </p>
-                          {section.text_target && section.text_source && (
+                          {section.texts[presenting.target_lang] && section.texts[presenting.source_lang] && section.texts[presenting.target_lang] !== section.texts[presenting.source_lang] && (
                             <p className={`${sourceSizeClass} text-purple-200 mt-3 italic whitespace-pre-wrap`}>
-                              {section.text_source}
+                              {section.texts[presenting.source_lang]}
                             </p>
                           )}
                         </div>

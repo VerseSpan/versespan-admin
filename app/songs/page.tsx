@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, getChurchId } from "@/lib/api";
+import { getLangName } from "@/lib/languages";
 
 interface PPStatus {
   feature_enabled: boolean;
@@ -11,8 +12,7 @@ interface PPStatus {
 
 interface Song {
   id: string;
-  title: string;
-  title_target?: string;
+  titles: Record<string, string>;
   section_count: number;
   is_active: boolean;
 }
@@ -24,11 +24,13 @@ export default function SongsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [ppStatus, setPpStatus] = useState<PPStatus | null>(null);
+  const [churchLanguages, setChurchLanguages] = useState<string[]>(["es", "en"]);
 
   useEffect(() => {
     api.proPresenterStatus()
       .then((s) => setPpStatus(s as PPStatus))
       .catch(() => {});
+    api.getChurchLanguages(getChurchId()).then(setChurchLanguages).catch(() => {});
   }, []);
 
   const loadSongs = async () => {
@@ -116,8 +118,8 @@ export default function SongsPage() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Spanish Title</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">English Title</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{getLangName(churchLanguages[0] || "es")} Title</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{getLangName(churchLanguages[1] || "en")} Title</th>
                 <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase">Sections</th>
                 <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase">Status</th>
                 <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Actions</th>
@@ -126,8 +128,8 @@ export default function SongsPage() {
             <tbody className="divide-y">
               {songs.map((song) => (
                 <tr key={song.id} className="hover:bg-gray-50 transition">
-                  <td className="px-6 py-4 text-sm text-gray-900">{song.title}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{song.title_target || '-'}</td>
+                  <td className="px-6 py-4 text-sm text-gray-900">{song.titles[churchLanguages[0]] || Object.values(song.titles)[0] || '-'}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{song.titles[churchLanguages[1]] || '-'}</td>
                   <td className="px-6 py-4 text-sm text-gray-600 text-center">{song.section_count}</td>
                   <td className="px-6 py-4 text-center">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${

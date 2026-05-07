@@ -7,6 +7,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { TranslationClient } from "@/lib/translation-client";
 import { api } from "@/lib/api";
 import { useStore, type TranslationMessage } from "@/lib/store";
+import { getLangName } from "@/lib/languages";
 
 interface BackendTranslation {
   content_type?: 'speech' | 'scripture' | 'song';
@@ -26,10 +27,6 @@ interface LiveSessionProps {
   targetLanguage: string;
 }
 
-const LANGUAGE_LABELS: Record<string, string> = {
-  es: "Spanish",
-  en: "English",
-};
 
 export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourceLanguage, targetLanguage }: LiveSessionProps) {
   const router = useRouter();
@@ -112,16 +109,15 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
       onSongStarted: (message: TranslationMessage) => {
         console.log('[LiveSession] Song started event received:', {
           song_id: message.song_id,
-          song_title: message.song_title,
-          song_title_en: message.song_title_en,
+          song_titles: message.song_titles,
           sections_count: message.sections?.length,
-          sections: message.sections,
         });
-        if (message.song_id && message.song_title && message.sections && message.sections.length > 0) {
+        if (message.song_id && message.song_titles && message.sections && message.sections.length > 0) {
           setActiveSong(sessionId, {
             song_id: message.song_id,
-            song_title: message.song_title,
-            song_title_en: message.song_title_en || message.song_title,
+            song_titles: message.song_titles,
+            source_lang: message.source_lang || 'es',
+            target_lang: message.target_lang || 'en',
             sections: message.sections,
           });
         }
@@ -268,7 +264,7 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
           {streaming && <span className="text-red-600 font-bold">● Streaming Audio</span>}
           <span className="text-gray-500">Started: {new Date(startedAt).toLocaleString()}</span>
           <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
-            {LANGUAGE_LABELS[sourceLanguage] || sourceLanguage} &rarr; {LANGUAGE_LABELS[targetLanguage] || targetLanguage}
+            {getLangName(sourceLanguage)} &rarr; {getLangName(targetLanguage)}
           </span>
         </div>
       </div>
@@ -369,8 +365,10 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
         <div className="bg-gradient-to-br from-blue-900 to-purple-900 rounded-lg shadow-2xl p-8 text-white">
           <div className="text-center mb-8">
             <div className="text-sm text-blue-200 uppercase tracking-wide mb-2">Now Playing</div>
-            <h2 className="text-3xl font-bold mb-1">{activeSong.song_title_en}</h2>
-            <div className="text-lg text-blue-300">{activeSong.song_title}</div>
+            <h2 className="text-3xl font-bold mb-1">{activeSong.song_titles[activeSong.target_lang] || activeSong.song_titles[activeSong.source_lang] || Object.values(activeSong.song_titles)[0]}</h2>
+            {activeSong.song_titles[activeSong.source_lang] && activeSong.song_titles[activeSong.source_lang] !== activeSong.song_titles[activeSong.target_lang] && (
+              <div className="text-lg text-blue-300">{activeSong.song_titles[activeSong.source_lang]}</div>
+            )}
           </div>
 
           <div className="max-h-[600px] overflow-y-auto space-y-6">
@@ -384,11 +382,11 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
                   </div>
                   <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
                     <div className="text-xl leading-relaxed whitespace-pre-wrap">
-                      {section.text_target || section.text_source}
+                      {section.texts[activeSong.target_lang] || section.texts[activeSong.source_lang] || Object.values(section.texts)[0]}
                     </div>
-                    {section.text_target && section.text_source && (
+                    {section.texts[activeSong.target_lang] && section.texts[activeSong.source_lang] && section.texts[activeSong.target_lang] !== section.texts[activeSong.source_lang] && (
                       <div className="text-sm text-blue-200 mt-3 italic whitespace-pre-wrap">
-                        {section.text_source}
+                        {section.texts[activeSong.source_lang]}
                       </div>
                     )}
                   </div>
@@ -439,11 +437,11 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <div className="text-xs text-gray-500 mb-1">{LANGUAGE_LABELS[sourceLanguage] || sourceLanguage}</div>
+                    <div className="text-xs text-gray-500 mb-1">{getLangName(sourceLanguage)}</div>
                     <div className="text-gray-900">{translation.source_text}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500 mb-1">{LANGUAGE_LABELS[targetLanguage] || targetLanguage}</div>
+                    <div className="text-xs text-gray-500 mb-1">{getLangName(targetLanguage)}</div>
                     <div className="text-gray-900">{translation.target_text}</div>
                   </div>
                 </div>

@@ -239,13 +239,13 @@ export const api = {
 	async getSong(id: string) {
 		return apiRequest(`/api/songs/${id}`, { method: "GET" });
 	},
-	async createSong(data: { church_id: number; title: string; title_target?: string; is_active?: boolean }) {
+	async createSong(data: { church_id: number; titles: Record<string, string>; is_active?: boolean }) {
 		return apiRequest("/api/songs", {
 			method: "POST",
 			body: JSON.stringify(data),
 		});
 	},
-	async updateSong(id: string, data: { title?: string; title_target?: string; is_active?: boolean }) {
+	async updateSong(id: string, data: { titles?: Record<string, string>; is_active?: boolean }) {
 		return apiRequest(`/api/songs/${id}`, {
 			method: "PUT",
 			body: JSON.stringify(data),
@@ -256,13 +256,13 @@ export const api = {
 	},
 
 	// Song Sections
-	async addSongSection(songId: string, data: { section_number: number; section_name: string; text_source: string; text_target?: string }) {
+	async addSongSection(songId: string, data: { section_number: number; section_name: string; texts: Record<string, string> }) {
 		return apiRequest(`/api/songs/${songId}/sections`, {
 			method: "POST",
 			body: JSON.stringify(data),
 		});
 	},
-	async updateSongSection(songId: string, sectionId: string, data: { section_number?: number; section_name?: string; text_source?: string; text_target?: string }) {
+	async updateSongSection(songId: string, sectionId: string, data: { section_number?: number; section_name?: string; texts?: Record<string, string> }) {
 		return apiRequest(`/api/songs/${songId}/sections/${sectionId}`, {
 			method: "PUT",
 			body: JSON.stringify(data),
@@ -275,13 +275,11 @@ export const api = {
 	// Song Import
 	async importSongWithSections(data: {
 		church_id: number;
-		title: string;
-		title_target?: string;
+		titles: Record<string, string>;
 		sections: Array<{
 			section_number: number;
 			section_name: string;
-			text_source: string;
-			text_target?: string;
+			texts: Record<string, string>;
 		}>;
 	}) {
 		return apiRequest("/api/songs/import/sections", {
@@ -345,14 +343,27 @@ export const api = {
 		return apiRequest(`/api/churches/${churchId}`, { method: "GET" });
 	},
 	async saveChurchSettings(churchId: number, settings: {
-		source_language?: string;
-		target_language?: string;
 		bible_version_source?: string;
 		bible_version_target?: string;
+		languages?: string[];
 	}) {
 		return apiRequest(`/api/churches/${churchId}/settings`, {
 			method: "PUT",
 			body: JSON.stringify(settings),
 		});
+	},
+
+	// Languages
+	async getSupportedLanguages(): Promise<Array<{ code: string; name: string }>> {
+		return apiRequest("/api/languages", { method: "GET" });
+	},
+
+	async getChurchLanguages(churchId: number = getChurchId()): Promise<string[]> {
+		try {
+			const church = await apiRequest<{ settings: { languages?: string[] } }>(`/api/churches/${churchId}`, { method: "GET" });
+			return church.settings?.languages ?? ["es", "en"];
+		} catch {
+			return ["es", "en"];
+		}
 	},
 };

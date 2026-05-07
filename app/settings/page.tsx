@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { api, getChurchId } from "@/lib/api";
+import { SUPPORTED_LANGUAGES, getLangName } from "@/lib/languages";
 
 interface PPStatus {
   feature_enabled: boolean;
@@ -38,6 +39,7 @@ export default function SettingsPage() {
     bible_version_source: "RV1960",
     bible_version_target: "KJV",
   });
+  const [churchLanguages, setChurchLanguages] = useState<string[]>(["es", "en"]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,11 +48,13 @@ export default function SettingsPage() {
     const churchId = getChurchId();
     api.getChurch(churchId)
       .then((church) => {
-        const c = church as Record<string, string>;
+        const c = church as Record<string, unknown>;
         setForm({
-          bible_version_source: c.bible_version_source || "RV1960",
-          bible_version_target: c.bible_version_target || "KJV",
+          bible_version_source: (c.bible_version_source as string) || "RV1960",
+          bible_version_target: (c.bible_version_target as string) || "KJV",
         });
+        const settings = (c.settings as Record<string, unknown>) || {};
+        setChurchLanguages((settings.languages as string[]) || ["es", "en"]);
       })
       .catch(() => {}); // silently fail — form has sensible defaults
   }, []);
@@ -60,13 +64,28 @@ export default function SettingsPage() {
     setForm(f => ({ ...f, [name]: value }));
   }
 
+  function toggleLanguage(code: string) {
+    setChurchLanguages(prev => {
+      if (prev.includes(code)) {
+        // Must keep at least 2 languages
+        if (prev.length <= 2) return prev;
+        return prev.filter(l => l !== code);
+      }
+      return [...prev, code];
+    });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (churchLanguages.length < 2) {
+      setError("At least 2 languages are required");
+      return;
+    }
     setSaving(true);
     setError(null);
     setSaved(false);
     try {
-      await api.saveChurchSettings(getChurchId(), form);
+      await api.saveChurchSettings(getChurchId(), { ...form, languages: churchLanguages });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err: unknown) {
@@ -108,6 +127,30 @@ export default function SettingsPage() {
               <option value="NLT">NLT</option>
             </select>
           </div>
+        </div>
+
+        {/* Languages */}
+        <div>
+          <label className="block text-base font-bold mb-2 text-gray-900">Active Languages</label>
+          <p className="text-sm text-gray-500 mb-3">
+            Select all languages your church uses. Songs must have text in each active language.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {Object.entries(SUPPORTED_LANGUAGES).map(([code, name]) => (
+              <label key={code} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={churchLanguages.includes(code)}
+                  onChange={() => toggleLanguage(code)}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                <span className="text-sm font-medium text-gray-800">{getLangName(code)} ({code})</span>
+              </label>
+            ))}
+          </div>
+          {churchLanguages.length < 2 && (
+            <p className="text-xs text-red-500 mt-1">At least 2 languages required.</p>
+          )}
         </div>
 
         {error && <p className="text-red-600 text-sm">{error}</p>}

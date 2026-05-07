@@ -1,23 +1,31 @@
 "use client";
 
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useStore, mapBackendSession, type BackendSession } from "@/lib/store";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AudioDeviceSelector } from "@/components/AudioDeviceSelector";
 import { api, getChurchId } from "@/lib/api";
+import { getLangName } from "@/lib/languages";
 
 export default function NewSessionPage() {
   const [name, setName] = useState("");
   const addSession = useStore((state) => state.addSession);
   const router = useRouter();
   const [deviceId, setDeviceId] = useState("");
-  const [sourceLanguage, setSourceLanguage] = useState<"es" | "en">("es");
+  const [churchLanguages, setChurchLanguages] = useState<string[]>(["es", "en"]);
+  const [sourceLanguage, setSourceLanguage] = useState("es");
+  const [targetLanguage, setTargetLanguage] = useState("en");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const targetLanguage = sourceLanguage === "es" ? "en" : "es";
+  useEffect(() => {
+    api.getChurchLanguages(getChurchId()).then((langs) => {
+      setChurchLanguages(langs);
+      setSourceLanguage(langs[0] || "es");
+      setTargetLanguage(langs[1] || "en");
+    }).catch(() => {});
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -87,32 +95,46 @@ export default function NewSessionPage() {
         <div>
           <label className="block text-base font-bold mb-2 text-gray-900">Translation Direction</label>
           <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setSourceLanguage("es")}
-              className={`p-4 rounded border-2 text-left transition ${
-                sourceLanguage === "es"
-                  ? "border-blue-600 bg-blue-50"
-                  : "border-gray-200 hover:border-gray-300"
-              }`}
-              disabled={isLoading}
-            >
-              <div className="font-semibold text-gray-900">Spanish &rarr; English</div>
-              <div className="text-xs text-gray-500 mt-1">Pastor speaks Spanish, translate to English</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => setSourceLanguage("en")}
-              className={`p-4 rounded border-2 text-left transition ${
-                sourceLanguage === "en"
-                  ? "border-blue-600 bg-blue-50"
-                  : "border-gray-200 hover:border-gray-300"
-              }`}
-              disabled={isLoading}
-            >
-              <div className="font-semibold text-gray-900">English &rarr; Spanish</div>
-              <div className="text-xs text-gray-500 mt-1">Pastor speaks English, translate to Spanish</div>
-            </button>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Source (Pastor speaks)</label>
+              <select
+                className="w-full border rounded px-3 py-2 text-gray-900 focus:outline-none focus:ring focus:border-blue-400"
+                value={sourceLanguage}
+                onChange={(e) => {
+                  const newSrc = e.target.value;
+                  setSourceLanguage(newSrc);
+                  if (targetLanguage === newSrc) {
+                    const fallback = churchLanguages.find((l) => l !== newSrc) || "";
+                    setTargetLanguage(fallback);
+                  }
+                }}
+                disabled={isLoading}
+              >
+                {churchLanguages.map((code) => (
+                  <option key={code} value={code}>{getLangName(code)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Target (Audience hears)</label>
+              <select
+                className="w-full border rounded px-3 py-2 text-gray-900 focus:outline-none focus:ring focus:border-blue-400"
+                value={targetLanguage}
+                onChange={(e) => {
+                  const newTgt = e.target.value;
+                  setTargetLanguage(newTgt);
+                  if (sourceLanguage === newTgt) {
+                    const fallback = churchLanguages.find((l) => l !== newTgt) || "";
+                    setSourceLanguage(fallback);
+                  }
+                }}
+                disabled={isLoading}
+              >
+                {churchLanguages.filter((code) => code !== sourceLanguage).map((code) => (
+                  <option key={code} value={code}>{getLangName(code)}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
         <AudioDeviceSelector onDeviceSelect={setDeviceId} />

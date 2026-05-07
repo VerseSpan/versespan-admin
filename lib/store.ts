@@ -19,8 +19,7 @@ export interface SongSection {
   id?: number;
   section_number: number;
   section_name: string;
-  text_source: string;
-  text_target?: string;
+  texts: Record<string, string>;
 }
 
 // Translation message format
@@ -39,8 +38,9 @@ export interface TranslationMessage {
   severity?: 'warning' | 'error';
   // Song-specific fields
   song_id?: string;
-  song_title?: string;
-  song_title_en?: string;
+  song_titles?: Record<string, string>;
+  source_lang?: string;
+  target_lang?: string;
   sections?: SongSection[];
   reason?: string;
 }
@@ -48,8 +48,9 @@ export interface TranslationMessage {
 // Active song data
 export interface ActiveSong {
   song_id: string;
-  song_title: string;
-  song_title_en: string;
+  song_titles: Record<string, string>;
+  source_lang: string;
+  target_lang: string;
   sections: SongSection[];
 }
 

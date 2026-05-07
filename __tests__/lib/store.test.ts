@@ -204,10 +204,11 @@ describe('Zustand Store', () => {
 
       useStore.getState().setActiveSong('sess-1', {
         song_id: 'song-1',
-        song_title: 'Cuán Grande Es Él',
-        song_title_en: 'How Great Thou Art',
+        song_titles: { es: 'Cuán Grande Es Él', en: 'How Great Thou Art' },
+        source_lang: 'es',
+        target_lang: 'en',
         sections: [
-          { section_number: 1, section_name: 'Verse 1', text_source: 'Señor mi Dios...' },
+          { section_number: 1, section_name: 'Verse 1', texts: { es: 'Señor mi Dios...', en: 'O Lord my God...' } },
         ],
       });
 
@@ -228,8 +229,9 @@ describe('Zustand Store', () => {
 
       useStore.getState().setActiveSong('sess-1', {
         song_id: 'song-1',
-        song_title: 'Test',
-        song_title_en: 'Test',
+        song_titles: { es: 'Test', en: 'Test' },
+        source_lang: 'es',
+        target_lang: 'en',
         sections: [],
       });
 

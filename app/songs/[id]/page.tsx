@@ -3,20 +3,19 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, getChurchId } from "@/lib/api";
+import { getLangName } from "@/lib/languages";
 
 interface SongSection {
   id: string;
   section_number: number;
   section_name: string;
-  text_source: string;
-  text_target: string;
+  texts: Record<string, string>;
 }
 
 interface Song {
   id: string;
-  title: string;
-  title_target: string;
+  titles: Record<string, string>;
   is_active: boolean;
   sections: SongSection[];
 }
@@ -24,25 +23,23 @@ interface Song {
 export default function SongDetailPage() {
   const params = useParams<{ id: string }>();
   const [song, setSong] = useState<Song | null>(null);
+  const [churchLanguages, setChurchLanguages] = useState<string[]>(["es", "en"]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingSection, setIsSavingSection] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Edit states
-  const [editedTitle, setEditedTitle] = useState("");
-  const [editedTitleTarget, setEditedTitleTarget] = useState("");
+  const [editedTitles, setEditedTitles] = useState<Record<string, string>>({});
   const [editedIsActive, setEditedIsActive] = useState(true);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editedSectionName, setEditedSectionName] = useState("");
-  const [editedSectionSource, setEditedSectionSource] = useState("");
-  const [editedSectionTarget, setEditedSectionTarget] = useState("");
+  const [editedSectionTexts, setEditedSectionTexts] = useState<Record<string, string>>({});
 
   // New section state
   const [showNewSection, setShowNewSection] = useState(false);
   const [newSectionName, setNewSectionName] = useState("");
-  const [newSectionSource, setNewSectionSource] = useState("");
-  const [newSectionTarget, setNewSectionTarget] = useState("");
+  const [newSectionTexts, setNewSectionTexts] = useState<Record<string, string>>({});
 
   const loadSong = async () => {
     try {
@@ -50,8 +47,7 @@ export default function SongDetailPage() {
       setError(null);
       const data = await api.getSong(params.id) as Song;
       setSong(data);
-      setEditedTitle(data.title);
-      setEditedTitleTarget(data.title_target);
+      setEditedTitles(data.titles || {});
       setEditedIsActive(data.is_active);
     } catch (err) {
       console.error("Failed to load song:", err);
@@ -63,17 +59,15 @@ export default function SongDetailPage() {
 
   useEffect(() => {
     loadSong();
+    api.getChurchLanguages(getChurchId()).then(setChurchLanguages).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
   const handleSaveSongInfo = async () => {
     try {
       setIsSaving(true);
       setError(null);
-      await api.updateSong(params.id, {
-        title: editedTitle,
-        title_target: editedTitleTarget,
-        is_active: editedIsActive,
-      });
+      await api.updateSong(params.id, { titles: editedTitles, is_active: editedIsActive });
       await loadSong();
     } catch (err) {
       console.error("Failed to update song:", err);
@@ -86,20 +80,17 @@ export default function SongDetailPage() {
   const handleEditSection = (section: SongSection) => {
     setEditingSectionId(section.id);
     setEditedSectionName(section.section_name);
-    setEditedSectionSource(section.text_source);
-    setEditedSectionTarget(section.text_target);
+    setEditedSectionTexts(section.texts || {});
   };
 
   const handleSaveSection = async () => {
     if (!editingSectionId || isSavingSection) return;
-
     try {
       setIsSavingSection(true);
       setError(null);
       await api.updateSongSection(params.id, editingSectionId, {
         section_name: editedSectionName,
-        text_source: editedSectionSource,
-        text_target: editedSectionTarget,
+        texts: editedSectionTexts,
       });
       setEditingSectionId(null);
       await loadSong();
@@ -114,13 +105,11 @@ export default function SongDetailPage() {
   const handleCancelEdit = () => {
     setEditingSectionId(null);
     setEditedSectionName("");
-    setEditedSectionSource("");
-    setEditedSectionTarget("");
+    setEditedSectionTexts({});
   };
 
   const handleDeleteSection = async (sectionId: string) => {
     if (!confirm("Are you sure you want to delete this section?")) return;
-
     try {
       setError(null);
       await api.deleteSongSection(params.id, sectionId);
@@ -132,23 +121,23 @@ export default function SongDetailPage() {
   };
 
   const handleAddNewSection = async () => {
-    if (!newSectionSource.trim() || !newSectionTarget.trim()) {
-      setError("Both Spanish and English text are required");
+    const hasText = Object.values(newSectionTexts).some(t => t.trim());
+    if (!hasText) {
+      setError("At least one language text is required");
       return;
     }
-
     try {
       setError(null);
-      const nextSectionNumber = song?.sections.length ? Math.max(...song.sections.map((s: SongSection) => s.section_number)) + 1 : 1;
+      const nextSectionNumber = song?.sections.length
+        ? Math.max(...song.sections.map((s: SongSection) => s.section_number)) + 1
+        : 1;
       await api.addSongSection(params.id, {
         section_number: nextSectionNumber,
         section_name: newSectionName || `Section ${nextSectionNumber}`,
-        text_source: newSectionSource,
-        text_target: newSectionTarget,
+        texts: newSectionTexts,
       });
       setNewSectionName("");
-      setNewSectionSource("");
-      setNewSectionTarget("");
+      setNewSectionTexts({});
       setShowNewSection(false);
       await loadSong();
     } catch (err) {
@@ -159,32 +148,24 @@ export default function SongDetailPage() {
 
   const handleReorderSection = async (sectionId: string, direction: "up" | "down") => {
     if (!song) return;
-
     const currentSection = song.sections.find((s: SongSection) => s.id === sectionId);
     if (!currentSection) return;
-
     const currentIndex = song.sections.findIndex((s: SongSection) => s.id === sectionId);
     const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-
     if (targetIndex < 0 || targetIndex >= song.sections.length) return;
-
     const targetSection = song.sections[targetIndex];
-
     try {
       setError(null);
-      // Swap section numbers
-      await api.updateSongSection(params.id, currentSection.id, {
-        section_number: targetSection.section_number,
-      });
-      await api.updateSongSection(params.id, targetSection.id, {
-        section_number: currentSection.section_number,
-      });
+      await api.updateSongSection(params.id, currentSection.id, { section_number: targetSection.section_number });
+      await api.updateSongSection(params.id, targetSection.id, { section_number: currentSection.section_number });
       await loadSong();
     } catch (err) {
       console.error("Failed to reorder sections:", err);
       setError(err instanceof Error ? err.message : "Failed to reorder sections");
     }
   };
+
+  const langGridStyle = { gridTemplateColumns: `repeat(${churchLanguages.length}, 1fr)` };
 
   if (isLoading) {
     return (
@@ -209,14 +190,12 @@ export default function SongDetailPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <Link href="/songs" className="text-blue-600 hover:underline text-sm">
           &larr; Back to Songs
         </Link>
       </div>
 
-      {/* Error Alert */}
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded text-red-800 text-sm">
           <strong>Error:</strong> {error}
@@ -227,29 +206,20 @@ export default function SongDetailPage() {
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-lg font-semibold mb-4">Song Information</h2>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Spanish Title
-              </label>
-              <input
-                type="text"
-                value={editedTitle}
-                onChange={(e) => setEditedTitle(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                English Title
-              </label>
-              <input
-                type="text"
-                value={editedTitleTarget}
-                onChange={(e) => setEditedTitleTarget(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
-              />
-            </div>
+          <div className="grid gap-4" style={langGridStyle}>
+            {churchLanguages.map(lang => (
+              <div key={lang}>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  {getLangName(lang)} Title
+                </label>
+                <input
+                  type="text"
+                  value={editedTitles[lang] || ""}
+                  onChange={(e) => setEditedTitles(prev => ({ ...prev, [lang]: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                />
+              </div>
+            ))}
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -302,31 +272,21 @@ export default function SongDetailPage() {
                 placeholder="e.g., Verse 1"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4 mb-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Spanish Lyrics
-                </label>
-                <textarea
-                  value={newSectionSource}
-                  onChange={(e) => setNewSectionSource(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 font-mono text-sm"
-                  rows={4}
-                  placeholder="Enter Spanish lyrics for this section"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  English Lyrics
-                </label>
-                <textarea
-                  value={newSectionTarget}
-                  onChange={(e) => setNewSectionTarget(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 font-mono text-sm"
-                  rows={4}
-                  placeholder="Enter English lyrics for this section"
-                />
-              </div>
+            <div className="grid gap-4 mb-3" style={langGridStyle}>
+              {churchLanguages.map(lang => (
+                <div key={lang}>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    {getLangName(lang)} Lyrics
+                  </label>
+                  <textarea
+                    value={newSectionTexts[lang] || ""}
+                    onChange={(e) => setNewSectionTexts(prev => ({ ...prev, [lang]: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 font-mono text-sm"
+                    rows={4}
+                    placeholder={`Enter ${getLangName(lang)} lyrics`}
+                  />
+                </div>
+              ))}
             </div>
             <div className="flex gap-2">
               <button
@@ -339,8 +299,7 @@ export default function SongDetailPage() {
                 onClick={() => {
                   setShowNewSection(false);
                   setNewSectionName("");
-                  setNewSectionSource("");
-                  setNewSectionTarget("");
+                  setNewSectionTexts({});
                 }}
                 className="bg-gray-400 text-white px-4 py-2 rounded shadow hover:bg-gray-500 transition font-semibold text-sm"
               >
@@ -361,12 +320,9 @@ export default function SongDetailPage() {
               .map((section: SongSection, index: number) => (
                 <div key={section.id} className="px-6 py-4 hover:bg-gray-50">
                   {editingSectionId === section.id ? (
-                    // Edit mode
                     <div>
                       <div className="mb-3">
-                        <label className="block text-xs font-semibold text-gray-700 mb-1">
-                          Section Name
-                        </label>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">Section Name</label>
                         <input
                           type="text"
                           value={editedSectionName}
@@ -374,29 +330,20 @@ export default function SongDetailPage() {
                           className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-4 mb-3">
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-1">
-                            Spanish Lyrics
-                          </label>
-                          <textarea
-                            value={editedSectionSource}
-                            onChange={(e) => setEditedSectionSource(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 font-mono text-sm"
-                            rows={4}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-1">
-                            English Lyrics
-                          </label>
-                          <textarea
-                            value={editedSectionTarget}
-                            onChange={(e) => setEditedSectionTarget(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 font-mono text-sm"
-                            rows={4}
-                          />
-                        </div>
+                      <div className="grid gap-4 mb-3" style={langGridStyle}>
+                        {churchLanguages.map(lang => (
+                          <div key={lang}>
+                            <label className="block text-xs font-semibold text-gray-700 mb-1">
+                              {getLangName(lang)} Lyrics
+                            </label>
+                            <textarea
+                              value={editedSectionTexts[lang] || ""}
+                              onChange={(e) => setEditedSectionTexts(prev => ({ ...prev, [lang]: e.target.value }))}
+                              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 font-mono text-sm"
+                              rows={4}
+                            />
+                          </div>
+                        ))}
                       </div>
                       <div className="flex gap-2">
                         <button
@@ -404,7 +351,7 @@ export default function SongDetailPage() {
                           disabled={isSavingSection}
                           className="text-green-600 hover:text-green-800 font-semibold text-sm disabled:opacity-50"
                         >
-                          {isSavingSection ? 'Saving...' : 'Save'}
+                          {isSavingSection ? "Saving..." : "Save"}
                         </button>
                         <button
                           onClick={handleCancelEdit}
@@ -415,7 +362,6 @@ export default function SongDetailPage() {
                       </div>
                     </div>
                   ) : (
-                    // View mode
                     <div>
                       <div className="flex items-center justify-between mb-3">
                         <div className="text-xs font-semibold text-gray-500 uppercase">
@@ -452,19 +398,15 @@ export default function SongDetailPage() {
                           </button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">Spanish</div>
-                          <div className="text-sm text-gray-900 whitespace-pre-wrap font-mono bg-gray-50 p-2 rounded">
-                            {section.text_source}
+                      <div className="grid gap-4" style={langGridStyle}>
+                        {churchLanguages.map(lang => (
+                          <div key={lang}>
+                            <div className="text-xs text-gray-500 mb-1">{getLangName(lang)}</div>
+                            <div className="text-sm text-gray-900 whitespace-pre-wrap font-mono bg-gray-50 p-2 rounded min-h-[2rem]">
+                              {section.texts[lang] || <span className="text-gray-400 italic">No text</span>}
+                            </div>
                           </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">English</div>
-                          <div className="text-sm text-gray-600 whitespace-pre-wrap font-mono bg-gray-50 p-2 rounded">
-                            {section.text_target}
-                          </div>
-                        </div>
+                        ))}
                       </div>
                     </div>
                   )}

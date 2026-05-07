@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, getChurchId } from "@/lib/api";
+import { getLangName } from "@/lib/languages";
 
 interface SourceItem {
   id: string;
@@ -17,8 +18,7 @@ interface Presentation {
 interface Section {
   section_number: number;
   section_name: string;
-  text_source: string;
-  text_target: string;
+  texts: Record<string, string>;
 }
 
 type Source = "libraries" | "playlists";
@@ -27,6 +27,9 @@ export default function ImportFromProPresenterPage() {
   const router = useRouter();
   const [featureEnabled, setFeatureEnabled] = useState<boolean | null>(null);
   const [bridgeConnected, setBridgeConnected] = useState(false);
+  const [churchLanguages, setChurchLanguages] = useState<string[]>(["es", "en"]);
+  const [sourceLang, setSourceLang] = useState("es");
+  const [targetLang, setTargetLang] = useState("en");
   const [source, setSource] = useState<Source>("libraries");
   const [libraries, setLibraries] = useState<SourceItem[]>([]);
   const [playlists, setPlaylists] = useState<SourceItem[]>([]);
@@ -34,9 +37,9 @@ export default function ImportFromProPresenterPage() {
   const [presentations, setPresentations] = useState<Presentation[]>([]);
   const [selectedPres, setSelectedPres] = useState<Presentation | null>(null);
   const [title, setTitle] = useState("");
-  const [titleEn, setTitleEn] = useState("");
+  const [titleTarget, setTitleTarget] = useState("");
   const [sections, setSections] = useState<Section[]>([
-    { section_number: 1, section_name: "Verse 1", text_source: "", text_target: "" },
+    { section_number: 1, section_name: "Verse 1", texts: { es: "" } },
   ]);
   const [fetchingLyrics, setFetchingLyrics] = useState(false);
   const [translating, setTranslating] = useState(false);
@@ -51,12 +54,20 @@ export default function ImportFromProPresenterPage() {
         setFeatureEnabled(status.feature_enabled);
         setBridgeConnected(status.bridge_connected);
         if (!status.feature_enabled) router.replace("/songs");
-        if (status.bridge_connected) {
-          loadLibraries();
-          // Playlists loaded lazily when user clicks the Playlists tab
-        }
+        if (status.bridge_connected) loadLibraries();
       })
       .catch(() => router.replace("/songs"));
+
+    api.getChurchLanguages(getChurchId())
+      .then((langs) => {
+        setChurchLanguages(langs);
+        const src = langs[0] || "es";
+        const tgt = langs[1] || "en";
+        setSourceLang(src);
+        setTargetLang(tgt);
+        setSections([{ section_number: 1, section_name: "Verse 1", texts: { [src]: "" } }]);
+      })
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -99,7 +110,6 @@ export default function ImportFromProPresenterPage() {
     setPresentations([]);
     setSelectedPres(null);
     if (s === "playlists" && playlists.length === 0) {
-      // Lazy-load playlists the first time the tab is clicked
       loadPlaylists();
     } else if (s === "libraries" && libraries.length === 1) {
       loadPresentations("libraries", libraries[0].id);
@@ -124,8 +134,7 @@ export default function ImportFromProPresenterPage() {
         setSections(texts.map((t, i) => ({
           section_number: i + 1,
           section_name: `Slide ${i + 1}`,
-          text_source: t,
-          text_target: "",
+          texts: { [sourceLang]: t },
         })));
       }
     } catch {
@@ -136,35 +145,41 @@ export default function ImportFromProPresenterPage() {
   }
 
   async function translateLyrics() {
-    const toTranslate = sections.filter(s => s.text_source.trim());
+    const toTranslate = sections.filter(s => s.texts[sourceLang]?.trim());
     if (toTranslate.length === 0) return;
     setTranslating(true);
     setError(null);
     try {
-      const res = await api.translateLyrics(toTranslate.map(s => s.text_source));
+      const res = await api.translateLyrics(toTranslate.map(s => s.texts[sourceLang]), sourceLang, targetLang);
       setSections(prev => {
-        let translationIdx = 0;
+        let idx = 0;
         return prev.map(s => {
-          if (!s.text_source.trim()) return s;
-          const translated = res.translations[translationIdx++] || "";
-          return { ...s, text_target: translated };
+          if (!s.texts[sourceLang]?.trim()) return s;
+          const translated = res.translations[idx++] || "";
+          return { ...s, texts: { ...s.texts, [targetLang]: translated } };
         });
       });
     } catch {
-      setError("Translation failed — paste English lyrics manually.");
+      setError("Translation failed — paste target lyrics manually.");
     } finally {
       setTranslating(false);
     }
   }
 
-  function updateSection(i: number, field: keyof Section, value: string | number) {
+  function updateSectionField(i: number, field: "section_number" | "section_name", value: string | number) {
     setSections(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: value } : s));
+  }
+
+  function updateSectionText(i: number, lang: string, value: string) {
+    setSections(prev => prev.map((s, idx) =>
+      idx === i ? { ...s, texts: { ...s.texts, [lang]: value } } : s
+    ));
   }
 
   function addSection() {
     setSections(prev => [
       ...prev,
-      { section_number: prev.length + 1, section_name: `Section ${prev.length + 1}`, text_source: "", text_target: "" },
+      { section_number: prev.length + 1, section_name: `Section ${prev.length + 1}`, texts: { [sourceLang]: "" } },
     ]);
   }
 
@@ -174,22 +189,22 @@ export default function ImportFromProPresenterPage() {
 
   async function handleImport() {
     if (!title.trim()) { setError("Title is required"); return; }
-    if (sections.every(s => !s.text_source.trim())) { setError("At least one section needs source lyrics"); return; }
+    if (sections.every(s => !s.texts[sourceLang]?.trim())) { setError("At least one section needs source lyrics"); return; }
     setImporting(true);
     setError(null);
     try {
+      const titles: Record<string, string> = { [sourceLang]: title.trim() };
+      if (titleTarget.trim()) titles[targetLang] = titleTarget.trim();
+
       await api.importSongWithSections({
         church_id: getChurchId(),
-        title: title.trim(),
-        title_target: titleEn.trim() || undefined,
-        sections: sections.filter(s => s.text_source.trim()).map(s => ({
+        titles,
+        sections: sections.filter(s => s.texts[sourceLang]?.trim()).map(s => ({
           section_number: s.section_number,
           section_name: s.section_name,
-          text_source: s.text_source,
-          text_target: s.text_target || undefined,
+          texts: Object.fromEntries(Object.entries(s.texts).filter(([, v]) => v.trim())),
         })),
       });
-      // Rebuild index best-effort — don't block navigation on failure
       api.rebuildSongIndex().catch(() => {});
       router.push("/songs");
     } catch (err: unknown) {
@@ -235,16 +250,13 @@ export default function ImportFromProPresenterPage() {
           </button>
         </div>
 
-        {/* Source toggle */}
         <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 w-fit">
           {(["libraries", "playlists"] as Source[]).map((s) => (
             <button
               key={s}
               onClick={() => switchSource(s)}
               className={`px-4 py-1.5 rounded-md text-sm font-semibold transition ${
-                source === s
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
+                source === s ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
               }`}
             >
               {s === "libraries" ? "Libraries" : "Playlists"}
@@ -252,7 +264,6 @@ export default function ImportFromProPresenterPage() {
           ))}
         </div>
 
-        {/* Library / Playlist picker */}
         {sourceItems.length > 1 && (
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">
@@ -271,7 +282,6 @@ export default function ImportFromProPresenterPage() {
           </div>
         )}
 
-        {/* Presentation list */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           {presentations.length === 0 ? (
             <div className="px-6 py-12 text-center text-gray-400">{emptyHint}</div>
@@ -311,12 +321,8 @@ export default function ImportFromProPresenterPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Import Song</h1>
         <div className="flex gap-3">
-          <button onClick={() => setStep("browse")} className="text-gray-500 hover:text-gray-700 text-sm">
-            Back
-          </button>
-          <button onClick={() => router.push("/songs")} className="text-gray-500 hover:text-gray-700 text-sm">
-            Cancel
-          </button>
+          <button onClick={() => setStep("browse")} className="text-gray-500 hover:text-gray-700 text-sm">Back</button>
+          <button onClick={() => router.push("/songs")} className="text-gray-500 hover:text-gray-700 text-sm">Cancel</button>
         </div>
       </div>
 
@@ -328,21 +334,25 @@ export default function ImportFromProPresenterPage() {
         {/* Titles */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Spanish Title</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
+              {getLangName(sourceLang)} Title (source)
+            </label>
             <input
               className="border rounded px-3 py-2 text-gray-900 w-full"
               value={title}
               onChange={e => setTitle(e.target.value)}
-              placeholder="Título en español"
+              placeholder={`Title in ${getLangName(sourceLang)}`}
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">English Title</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
+              {getLangName(targetLang)} Title (optional)
+            </label>
             <input
               className="border rounded px-3 py-2 text-gray-900 w-full"
-              value={titleEn}
-              onChange={e => setTitleEn(e.target.value)}
-              placeholder="Title in English"
+              value={titleTarget}
+              onChange={e => setTitleTarget(e.target.value)}
+              placeholder={`Title in ${getLangName(targetLang)}`}
             />
           </div>
         </div>
@@ -360,13 +370,51 @@ export default function ImportFromProPresenterPage() {
           <button
             type="button"
             onClick={translateLyrics}
-            disabled={translating || fetchingLyrics || sections.every(s => !s.text_source.trim())}
+            disabled={translating || fetchingLyrics || sections.every(s => !s.texts[sourceLang]?.trim())}
             className="px-4 py-1.5 rounded bg-blue-100 text-blue-800 hover:bg-blue-200 font-semibold text-sm disabled:opacity-50 transition"
           >
-            {translating ? "Translating..." : "Translate to English"}
+            {translating ? "Translating..." : `Translate to ${getLangName(targetLang)}`}
           </button>
-          <span className="text-xs text-gray-400">Navigate to the song in ProPresenter first, then Fetch · or paste manually</span>
+          <span className="text-xs text-gray-400">
+            Navigate to the song in ProPresenter first, then Fetch · or paste manually
+          </span>
         </div>
+
+        {/* Language direction selector */}
+        {churchLanguages.length > 2 && (
+          <div className="flex items-center gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Source language</label>
+              <select
+                className="border rounded px-2 py-1 text-sm text-gray-900"
+                value={sourceLang}
+                onChange={e => {
+                  setSourceLang(e.target.value);
+                  if (targetLang === e.target.value) {
+                    setTargetLang(churchLanguages.find(l => l !== e.target.value) || "en");
+                  }
+                }}
+              >
+                {churchLanguages.map(l => <option key={l} value={l}>{getLangName(l)}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Target language</label>
+              <select
+                className="border rounded px-2 py-1 text-sm text-gray-900"
+                value={targetLang}
+                onChange={e => {
+                  setTargetLang(e.target.value);
+                  if (sourceLang === e.target.value) {
+                    setSourceLang(churchLanguages.find(l => l !== e.target.value) || "es");
+                  }
+                }}
+              >
+                {churchLanguages.map(l => <option key={l} value={l}>{getLangName(l)}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
 
         {/* Sections */}
         <div className="space-y-4">
@@ -387,7 +435,7 @@ export default function ImportFromProPresenterPage() {
                 <input
                   className="border rounded px-2 py-1 text-sm text-gray-900 w-40"
                   value={s.section_name}
-                  onChange={e => updateSection(i, "section_name", e.target.value)}
+                  onChange={e => updateSectionField(i, "section_name", e.target.value)}
                   placeholder="Section name"
                 />
                 <span className="text-xs text-gray-400">#{s.section_number}</span>
@@ -401,21 +449,25 @@ export default function ImportFromProPresenterPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Spanish (source)</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    {getLangName(sourceLang)} (source)
+                  </label>
                   <textarea
                     className="border rounded px-3 py-2 text-sm text-gray-900 w-full h-28 resize-none"
-                    value={s.text_source}
-                    onChange={e => updateSection(i, "text_source", e.target.value)}
-                    placeholder="Letra en español..."
+                    value={s.texts[sourceLang] || ""}
+                    onChange={e => updateSectionText(i, sourceLang, e.target.value)}
+                    placeholder={`Lyrics in ${getLangName(sourceLang)}...`}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">English (target)</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    {getLangName(targetLang)} (translation)
+                  </label>
                   <textarea
                     className="border rounded px-3 py-2 text-sm text-gray-900 w-full h-28 resize-none"
-                    value={s.text_target}
-                    onChange={e => updateSection(i, "text_target", e.target.value)}
-                    placeholder="English lyrics..."
+                    value={s.texts[targetLang] || ""}
+                    onChange={e => updateSectionText(i, targetLang, e.target.value)}
+                    placeholder={`Lyrics in ${getLangName(targetLang)}...`}
                   />
                 </div>
               </div>
