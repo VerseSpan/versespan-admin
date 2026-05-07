@@ -97,8 +97,8 @@ export default function ImportSongsPage() {
         sections,
       });
 
-      // Rebuild search index
-      await api.rebuildSongIndex();
+      // Rebuild search index best-effort — don't block navigation on failure
+      api.rebuildSongIndex().catch(() => {});
 
       // Redirect to songs list
       router.push("/songs");
