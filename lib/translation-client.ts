@@ -14,6 +14,8 @@ export interface TranslationClientConfig {
   onConnectionChange?: (connected: boolean) => void;
   onSongStarted?: (message: TranslationMessage) => void;
   onSongEnded?: (message: TranslationMessage) => void;
+  onPresenting?: (message: TranslationMessage) => void;
+  onPresentingCleared?: () => void;
 }
 
 export class TranslationClient {
@@ -145,6 +147,12 @@ export class TranslationClient {
       case 'viewer_count':
       case 'connected_users':
         this.config.onStatus?.(message);
+        break;
+      case 'presenting':
+        this.config.onPresenting?.(message);
+        break;
+      case 'presenting_cleared':
+        this.config.onPresentingCleared?.();
         break;
       default:
         console.warn('[TranslationClient] Unknown message type:', message);
