@@ -24,7 +24,7 @@ export interface SongSection {
 
 // Translation message format
 export interface TranslationMessage {
-  type: 'translation' | 'status' | 'error' | 'pong' | 'song_started' | 'song_ended' | 'viewer_count' | 'connected_users';
+  type: 'translation' | 'status' | 'error' | 'pong' | 'song_started' | 'song_ended' | 'viewer_count' | 'connected_users' | 'presenting' | 'presenting_cleared';
   content_type?: 'speech' | 'scripture' | 'song';
   source_text?: string;
   target_text?: string;
