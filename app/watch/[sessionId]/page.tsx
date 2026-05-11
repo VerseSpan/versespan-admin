@@ -205,9 +205,7 @@ export default function WatchPage() {
             activeSongRef.current = null;
             setActiveSong(null);
             setPresenting(null);
-            // Reconnect immediately to get fresh history + re-enter broadcast group
-            ws.close();
-            return;
+            // WebSocket stays connected — translation history is preserved
           }
 
           if (msg.type === "translation" && (msg.translated_text || msg.target_text)) {
@@ -259,7 +257,7 @@ export default function WatchPage() {
   const sourceSizeClass = { md: "text-sm", lg: "text-base", xl: "text-lg" }[fontSize];
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
+    <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-800">
         <div className="flex items-center gap-2">
@@ -325,120 +323,129 @@ export default function WatchPage() {
         </div>
       </div>
 
-      {/* Main content — translation feed always full width, presenting panel below */}
+      {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
 
-        {/* Translation feed — takes remaining space above presenting panel */}
-        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-          {/* Column label */}
-          <div className="flex items-center gap-2 px-4 py-2 bg-gray-900 border-b border-gray-800">
-            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-            <span className="text-xs font-semibold text-blue-400 uppercase tracking-widest">Live Translation</span>
-          </div>
+        {presenting?.content_type === "song" ? (
 
-          {/* Latest translation — prominent */}
-          {lastText && (
-            <div className="px-5 py-4 bg-gray-900/60 border-b border-gray-800 border-l-4 border-l-blue-500">
-              <p className={`${fontSizeClass} font-semibold leading-snug text-white`}>
-                {lastText}
-              </p>
-            </div>
-          )}
-
-          {/* Translation feed */}
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-            {status === "connecting" && translations.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-500">
-                <div className="w-8 h-8 border-2 border-gray-600 border-t-blue-400 rounded-full animate-spin" />
-                <p className="text-sm">Connecting to translation stream...</p>
-              </div>
-            )}
-
-            {status === "ended" && (
-              <div className="flex flex-col items-center justify-center h-48 gap-2 text-gray-500">
-                <p className="text-lg">Service has ended</p>
-                <p className="text-sm">Thank you for joining</p>
-              </div>
-            )}
-
-            {[...translations].reverse().map((t) => (
-              <div key={t.id} className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-semibold uppercase tracking-wide ${CONTENT_COLORS[t.content_type]}`}>
-                    {CONTENT_LABELS[t.content_type]}
-                  </span>
-                  <span className="text-xs text-gray-600">
-                    {new Date(t.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                </div>
-                <p className={`${fontSizeClass} leading-snug text-gray-100`}>{t.target_text}</p>
-                {t.source_text && (
-                  <p className={`${sourceSizeClass} text-gray-500 italic`}>{t.source_text}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* BOTTOM: Presenting panel — full width, appears when ProPresenter shows a song or verse */}
-        {presenting && (
-          <div className="border-t border-gray-800 bg-gray-900 flex-shrink-0 max-h-[45vh] overflow-y-auto">
-            {/* Bar label */}
-            <div className="flex items-center gap-2 px-4 py-2 bg-gray-800/60 border-b border-gray-800 sticky top-0">
-              <span className={`w-2 h-2 rounded-full animate-pulse ${presenting.content_type === "song" ? "bg-purple-400" : "bg-amber-400"}`} />
-              <span className={`text-xs font-semibold uppercase tracking-widest ${presenting.content_type === "song" ? "text-purple-400" : "text-amber-400"}`}>
-                {presenting.content_type === "song" ? "Song" : "Scripture"}
-              </span>
+          /* === SONG MODE: full-height takeover === */
+          <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+            {/* Label bar */}
+            <div className="flex items-center gap-2 px-4 py-2 bg-gray-800/60 border-b border-gray-800 flex-shrink-0">
+              <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+              <span className="text-xs font-semibold text-purple-400 uppercase tracking-widest">Now Playing</span>
             </div>
 
-            {/* Scripture content */}
-            {presenting.content_type === "scripture" && (
-              <div className="px-5 py-4 flex flex-col gap-3">
-                {presenting.verse_ref && (
-                  <p className="text-amber-400 text-sm font-semibold tracking-wide">{presenting.verse_ref}</p>
-                )}
-                <p className={`${fontSizeClass} text-white leading-relaxed`}>{presenting.target_text}</p>
-                {presenting.source_text && presenting.source_text !== presenting.target_text && (
-                  <p className={`${sourceSizeClass} text-gray-500 italic`}>{presenting.source_text}</p>
+            {/* Song body — scrollable, fills remaining height */}
+            <div className="flex-1 overflow-y-auto px-5 py-6">
+              <div className="mb-6">
+                <p className={`${fontSizeClass} font-bold text-white`}>
+                  {presenting.song_titles[presenting.target_lang] || presenting.song_titles[presenting.source_lang] || Object.values(presenting.song_titles)[0] || ""}
+                </p>
+                {presenting.song_titles[presenting.source_lang] && presenting.song_titles[presenting.target_lang] && presenting.song_titles[presenting.source_lang] !== presenting.song_titles[presenting.target_lang] && (
+                  <p className="text-purple-300 text-sm mt-1">{presenting.song_titles[presenting.source_lang]}</p>
                 )}
               </div>
-            )}
+              <div className="flex flex-wrap gap-4">
+                {[...presenting.sections]
+                  .sort((a, b) => a.section_number - b.section_number)
+                  .map((section) => (
+                    <div key={section.section_number} className="min-w-[200px]">
+                      <p className="text-xs font-semibold text-purple-400 uppercase tracking-wide mb-1">
+                        {section.section_name}
+                      </p>
+                      <div className="bg-white/5 rounded-xl p-3">
+                        <p className={`${fontSizeClass} leading-relaxed text-white whitespace-pre-wrap`}>
+                          {section.texts[presenting.target_lang] || section.texts[presenting.source_lang] || Object.values(section.texts)[0] || ""}
+                        </p>
+                        {section.texts[presenting.target_lang] && section.texts[presenting.source_lang] && section.texts[presenting.target_lang] !== section.texts[presenting.source_lang] && (
+                          <p className={`${sourceSizeClass} text-purple-200 mt-2 italic whitespace-pre-wrap`}>
+                            {section.texts[presenting.source_lang]}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          </div>
 
-            {/* Song content */}
-            {presenting.content_type === "song" && (
-              <div className="px-5 py-4">
-                <div className="mb-4">
-                  <p className={`${fontSizeClass} font-bold text-white`}>
-                    {presenting.song_titles[presenting.target_lang] || presenting.song_titles[presenting.source_lang] || Object.values(presenting.song_titles)[0] || ""}
+        ) : (
+
+          /* === NORMAL MODE: translation feed + optional scripture panel === */
+          <>
+            {/* Translation feed */}
+            <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+              {/* Column label */}
+              <div className="flex items-center gap-2 px-4 py-2 bg-gray-900 border-b border-gray-800">
+                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                <span className="text-xs font-semibold text-blue-400 uppercase tracking-widest">Live Translation</span>
+              </div>
+
+              {/* Latest translation — prominent */}
+              {lastText && (
+                <div className="px-5 py-4 bg-gray-900/60 border-b border-gray-800 border-l-4 border-l-blue-500 flex-shrink-0">
+                  <p className={`${fontSizeClass} font-semibold leading-snug text-white`}>
+                    {lastText}
                   </p>
-                  {presenting.song_titles[presenting.source_lang] && presenting.song_titles[presenting.target_lang] && presenting.song_titles[presenting.source_lang] !== presenting.song_titles[presenting.target_lang] && (
-                    <p className="text-purple-300 text-sm mt-1">{presenting.song_titles[presenting.source_lang]}</p>
+                </div>
+              )}
+
+              {/* Scrollable feed */}
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                {status === "connecting" && translations.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-500">
+                    <div className="w-8 h-8 border-2 border-gray-600 border-t-blue-400 rounded-full animate-spin" />
+                    <p className="text-sm">Connecting to translation stream...</p>
+                  </div>
+                )}
+
+                {status === "ended" && (
+                  <div className="flex flex-col items-center justify-center h-48 gap-2 text-gray-500">
+                    <p className="text-lg">Service has ended</p>
+                    <p className="text-sm">Thank you for joining</p>
+                  </div>
+                )}
+
+                {[...translations].reverse().map((t) => (
+                  <div key={t.id} className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-semibold uppercase tracking-wide ${CONTENT_COLORS[t.content_type]}`}>
+                        {CONTENT_LABELS[t.content_type]}
+                      </span>
+                      <span className="text-xs text-gray-600">
+                        {new Date(t.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                    <p className={`${fontSizeClass} leading-snug text-gray-100`}>{t.target_text}</p>
+                    {t.source_text && (
+                      <p className={`${sourceSizeClass} text-gray-500 italic`}>{t.source_text}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Scripture panel — bottom, only for non-song presenting content */}
+            {presenting && presenting.content_type === "scripture" && (
+              <div className="border-t border-gray-800 bg-gray-900 flex-shrink-0 max-h-[45vh] overflow-y-auto">
+                <div className="flex items-center gap-2 px-4 py-2 bg-gray-800/60 border-b border-gray-800 sticky top-0">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <span className="text-xs font-semibold text-amber-400 uppercase tracking-widest">Scripture</span>
+                </div>
+                <div className="px-5 py-4 flex flex-col gap-3">
+                  {presenting.verse_ref && (
+                    <p className="text-amber-400 text-sm font-semibold tracking-wide">{presenting.verse_ref}</p>
+                  )}
+                  <p className={`${fontSizeClass} text-white leading-relaxed`}>{presenting.target_text}</p>
+                  {presenting.source_text && presenting.source_text !== presenting.target_text && (
+                    <p className={`${sourceSizeClass} text-gray-500 italic`}>{presenting.source_text}</p>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-4">
-                  {[...presenting.sections]
-                    .sort((a, b) => a.section_number - b.section_number)
-                    .map((section) => (
-                      <div key={section.section_number} className="min-w-[200px]">
-                        <p className="text-xs font-semibold text-purple-400 uppercase tracking-wide mb-1">
-                          {section.section_name}
-                        </p>
-                        <div className="bg-white/5 rounded-xl p-3">
-                          <p className={`${fontSizeClass} leading-relaxed text-white whitespace-pre-wrap`}>
-                            {section.texts[presenting.target_lang] || section.texts[presenting.source_lang] || Object.values(section.texts)[0] || ""}
-                          </p>
-                          {section.texts[presenting.target_lang] && section.texts[presenting.source_lang] && section.texts[presenting.target_lang] !== section.texts[presenting.source_lang] && (
-                            <p className={`${sourceSizeClass} text-purple-200 mt-2 italic whitespace-pre-wrap`}>
-                              {section.texts[presenting.source_lang]}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                </div>
               </div>
             )}
-          </div>
+          </>
+
         )}
 
       </div>
