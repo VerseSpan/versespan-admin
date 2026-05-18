@@ -106,6 +106,9 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
           setStreaming(false);
         }
       },
+      onStreamingResumed: () => {
+        setStreaming(true);
+      },
       onSongStarted: (message: TranslationMessage) => {
         console.log('[LiveSession] Song started event received:', {
           song_id: message.song_id,

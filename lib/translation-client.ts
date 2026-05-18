@@ -12,6 +12,7 @@ export interface TranslationClientConfig {
   onStatus?: (message: TranslationMessage) => void;
   onError?: (error: string) => void;
   onConnectionChange?: (connected: boolean) => void;
+  onStreamingResumed?: () => void;
   onSongStarted?: (message: TranslationMessage) => void;
   onSongEnded?: (message: TranslationMessage) => void;
   onPresenting?: (message: TranslationMessage) => void;
@@ -25,10 +26,11 @@ export class TranslationClient {
   private audioStream: MediaStream | null = null;
   private config: TranslationClientConfig;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectDelay = 2000;
+  private maxReconnectAttempts = 10;
+  private reconnectDelay = 3000;
   private pingInterval: NodeJS.Timeout | null = null;
   private intentionalDisconnect = false;
+  private wasStreamingBeforeDisconnect = false;
 
   constructor(config: TranslationClientConfig) {
     this.config = config;
@@ -54,8 +56,15 @@ export class TranslationClient {
         this.ws.onopen = () => {
           console.log('[TranslationClient] ✓ Connected to translation service');
           console.log('[TranslationClient] WebSocket readyState:', this.ws?.readyState, '(OPEN)');
+          const isReconnect = this.reconnectAttempts > 0;
           this.reconnectAttempts = 0;
           this.config.onConnectionChange?.(true);
+
+          // If audio was streaming before the disconnect, notify so the UI can restore it
+          if (isReconnect && this.wasStreamingBeforeDisconnect) {
+            console.log('[TranslationClient] Reconnected — audio was streaming before disconnect, resuming');
+            this.config.onStreamingResumed?.();
+          }
 
           // Start ping interval to keep connection alive
           this.startPingInterval();
@@ -86,6 +95,7 @@ export class TranslationClient {
             1006: 'Abnormal closure (connection lost)',
             1008: 'Policy violation (e.g., session not found)',
             1011: 'Server error',
+            1012: 'Service restart',
           };
 
           console.log('[TranslationClient] WebSocket closed');
@@ -93,6 +103,9 @@ export class TranslationClient {
           console.log('[TranslationClient] - Reason:', event.reason || 'No reason provided');
           console.log('[TranslationClient] - Clean close:', event.wasClean);
           console.log('[TranslationClient] - Meaning:', closeReasons[event.code] || 'Unknown');
+
+          // Track whether audio was streaming so we can resume after reconnect
+          this.wasStreamingBeforeDisconnect = this.isStreaming();
 
           this.config.onConnectionChange?.(false);
           this.stopPingInterval();
@@ -153,6 +166,10 @@ export class TranslationClient {
         break;
       case 'presenting_cleared':
         this.config.onPresentingCleared?.();
+        break;
+      case 'server_restart':
+        console.log('[TranslationClient] Server is restarting, will reconnect automatically');
+        this.reconnectAttempts = 0;
         break;
       default:
         console.warn('[TranslationClient] Unknown message type:', message);
