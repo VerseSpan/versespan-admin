@@ -49,6 +49,7 @@ export default function WatchPage() {
   const [translations, setTranslations] = useState<Translation[]>([]);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [fontSize, setFontSize] = useState<"md" | "lg" | "xl">("lg");
   const [lastText, setLastText] = useState("");
   const [activeSong, setActiveSong] = useState<ActiveSong | null>(null);
@@ -56,15 +57,27 @@ export default function WatchPage() {
   const sessionTargetLangRef = useRef("en");
   const wsRef = useRef<WebSocket | null>(null);
   const ttsEnabledRef = useRef(true);
+  const audioUnlockedRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const idCounter = useRef(0);
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   useEffect(() => { ttsEnabledRef.current = ttsEnabled; }, [ttsEnabled]);
+  useEffect(() => { audioUnlockedRef.current = audioUnlocked; }, [audioUnlocked]);
+
+  const unlockAudio = useCallback(async () => {
+    if (audioUnlockedRef.current) return;
+    try {
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+      if (audioCtxRef.current.state === "suspended") await audioCtxRef.current.resume();
+    } catch {}
+    audioUnlockedRef.current = true;
+    setAudioUnlocked(true);
+  }, []);
 
   const speak = useCallback(async (text: string) => {
-    if (!ttsEnabledRef.current || !text.trim()) return;
+    if (!ttsEnabledRef.current || !audioUnlockedRef.current || !text.trim()) return;
 
     // Stop any currently playing audio
     currentSourceRef.current?.stop();
@@ -77,8 +90,7 @@ export default function WatchPage() {
       if (!res.ok) throw new Error("TTS endpoint unavailable");
 
       const arrayBuffer = await res.arrayBuffer();
-      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
-      const ctx = audioCtxRef.current;
+      const ctx = audioCtxRef.current!;
       if (ctx.state === "suspended") await ctx.resume();
 
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
@@ -257,7 +269,17 @@ export default function WatchPage() {
   const sourceSizeClass = { md: "text-sm", lg: "text-base", xl: "text-lg" }[fontSize];
 
   return (
-    <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
+    <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden" onClick={unlockAudio}>
+      {/* Audio unlock banner — dismisses on first tap anywhere */}
+      {!audioUnlocked && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-gray-950/90 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4 px-8 text-center">
+            <span className="text-5xl">🔊</span>
+            <p className="text-xl font-semibold text-white">Tap to enable audio</p>
+            <p className="text-sm text-gray-400">Live translation with voice will start automatically</p>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-800">
         <div className="flex items-center gap-2">
@@ -331,9 +353,15 @@ export default function WatchPage() {
           /* === SONG MODE: full-height takeover === */
           <div className="flex-1 flex flex-col overflow-hidden min-h-0">
             {/* Label bar */}
-            <div className="flex items-center gap-2 px-4 py-2 bg-gray-800/60 border-b border-gray-800 flex-shrink-0">
-              <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-              <span className="text-xs font-semibold text-purple-400 uppercase tracking-widest">Now Playing</span>
+            <div className="flex items-center justify-between px-4 py-2 bg-gray-800/60 border-b border-gray-800 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+                <span className="text-xs font-semibold text-purple-400 uppercase tracking-widest">Now Playing</span>
+              </div>
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-green-400 uppercase tracking-widest">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                Presenting Now
+              </span>
             </div>
 
             {/* Song body — scrollable, fills remaining height */}
@@ -409,14 +437,9 @@ export default function WatchPage() {
 
                 {[...translations].reverse().map((t) => (
                   <div key={t.id} className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs font-semibold uppercase tracking-wide ${CONTENT_COLORS[t.content_type]}`}>
-                        {CONTENT_LABELS[t.content_type]}
-                      </span>
-                      <span className="text-xs text-gray-600">
-                        {new Date(t.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    </div>
+                    <span className="text-xs text-gray-600">
+                      {new Date(t.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
                     <p className={`${fontSizeClass} leading-snug text-gray-100`}>{t.target_text}</p>
                     {t.source_text && (
                       <p className={`${sourceSizeClass} text-gray-500 italic`}>{t.source_text}</p>
@@ -429,9 +452,15 @@ export default function WatchPage() {
             {/* Scripture panel — bottom, only for non-song presenting content */}
             {presenting && presenting.content_type === "scripture" && (
               <div className="border-t border-gray-800 bg-gray-900 flex-shrink-0 max-h-[45vh] overflow-y-auto">
-                <div className="flex items-center gap-2 px-4 py-2 bg-gray-800/60 border-b border-gray-800 sticky top-0">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                  <span className="text-xs font-semibold text-amber-400 uppercase tracking-widest">Scripture</span>
+                <div className="flex items-center justify-between px-4 py-2 bg-gray-800/60 border-b border-gray-800 sticky top-0">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                    <span className="text-xs font-semibold text-amber-400 uppercase tracking-widest">Scripture</span>
+                  </div>
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-green-400 uppercase tracking-widest">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                    Presenting Now
+                  </span>
                 </div>
                 <div className="px-5 py-4 flex flex-col gap-3">
                   {presenting.verse_ref && (
