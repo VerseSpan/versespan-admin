@@ -68,21 +68,6 @@ export default function WatchPage() {
   useEffect(() => { ttsEnabledRef.current = ttsEnabled; }, [ttsEnabled]);
   useEffect(() => { audioUnlockedRef.current = audioUnlocked; }, [audioUnlocked]);
 
-  const unlockAudio = useCallback(async () => {
-    if (audioUnlockedRef.current) return;
-    // Set unlocked immediately so any speak() calls during AudioContext resume don't get dropped
-    audioUnlockedRef.current = true;
-    setAudioUnlocked(true);
-    try {
-      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
-      if (audioCtxRef.current.state === "suspended") await audioCtxRef.current.resume();
-    } catch {}
-    // Immediately speak the last translation so user gets confirmation audio is working
-    if (lastTextRef.current && speakRef.current) {
-      speakRef.current(lastTextRef.current);
-    }
-  }, []);
-
   const speak = useCallback(async (text: string) => {
     if (!ttsEnabledRef.current || !audioUnlockedRef.current || !text.trim()) return;
 
@@ -118,9 +103,20 @@ export default function WatchPage() {
     }
   }, [apiUrl]);
 
-  // Stable ref so the WebSocket effect doesn't depend on `speak`
-  const speakRef = useRef<typeof speak | null>(null);
-  speakRef.current = speak;
+  const unlockAudio = useCallback(async () => {
+    if (audioUnlockedRef.current) return;
+    // Set unlocked immediately so any speak() calls during AudioContext resume don't get dropped
+    audioUnlockedRef.current = true;
+    setAudioUnlocked(true);
+    try {
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+      if (audioCtxRef.current.state === "suspended") await audioCtxRef.current.resume();
+    } catch {}
+    // Immediately speak the last translation so user gets confirmation audio is working
+    if (lastTextRef.current) {
+      speak(lastTextRef.current);
+    }
+  }, [speak]);
 
   // Track song mode in a ref so TTS can check it without being a dep
   const activeSongRef = useRef<ActiveSong | null>(null);
@@ -241,7 +237,7 @@ export default function WatchPage() {
             lastTextRef.current = entry.target_text;
             // Skip TTS while song overlay is active
             if (!activeSongRef.current) {
-              speakRef.current?.(entry.target_text);
+              speak(entry.target_text);
             }
           }
 
@@ -271,7 +267,7 @@ export default function WatchPage() {
       window.speechSynthesis?.cancel();
       wsRef.current?.close();
     };
-  }, [sessionId]);
+  }, [sessionId, speak]);
 
 
   const fontSizeClass = { md: "text-xl", lg: "text-2xl", xl: "text-3xl" }[fontSize];
