@@ -60,6 +60,8 @@ export default function WatchPage() {
   const audioUnlockedRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const ttsAbortRef = useRef<AbortController | null>(null);
+  const lastTextRef = useRef("");
   const idCounter = useRef(0);
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -68,50 +70,51 @@ export default function WatchPage() {
 
   const unlockAudio = useCallback(async () => {
     if (audioUnlockedRef.current) return;
-    // Unlock Web Speech API for iOS synchronously before any await
-    if ("speechSynthesis" in window) {
-      const s = new SpeechSynthesisUtterance("");
-      window.speechSynthesis.speak(s);
-    }
+    // Set unlocked immediately so any speak() calls during AudioContext resume don't get dropped
+    audioUnlockedRef.current = true;
+    setAudioUnlocked(true);
     try {
       if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
       if (audioCtxRef.current.state === "suspended") await audioCtxRef.current.resume();
     } catch {}
-    audioUnlockedRef.current = true;
-    setAudioUnlocked(true);
+    // Immediately speak the last translation so user gets confirmation audio is working
+    if (lastTextRef.current && speakRef.current) {
+      speakRef.current(lastTextRef.current);
+    }
   }, []);
 
   const speak = useCallback(async (text: string) => {
     if (!ttsEnabledRef.current || !audioUnlockedRef.current || !text.trim()) return;
 
-    // Stop any currently playing audio
+    // Cancel any in-flight TTS request and stop playing audio
+    ttsAbortRef.current?.abort();
     currentSourceRef.current?.stop();
     currentSourceRef.current = null;
 
+    const controller = new AbortController();
+    ttsAbortRef.current = controller;
+
     try {
-      // --- Kokoro TTS via backend ---
       const params = new URLSearchParams({ text, lang: sessionTargetLangRef.current });
-      const res = await fetch(`${apiUrl}/api/tts?${params}`);
-      if (!res.ok) throw new Error("TTS endpoint unavailable");
+      const res = await fetch(`${apiUrl}/api/tts?${params}`, { signal: controller.signal });
+      if (!res.ok || controller.signal.aborted) return;
 
       const arrayBuffer = await res.arrayBuffer();
+      if (controller.signal.aborted) return;
+
       const ctx = audioCtxRef.current!;
       if (ctx.state === "suspended") await ctx.resume();
 
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+      if (controller.signal.aborted) return;
+
       const source = ctx.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(ctx.destination);
       source.start();
       currentSourceRef.current = source;
     } catch {
-      // Fallback: Web Speech API if Kokoro endpoint is down
-      if (!("speechSynthesis" in window)) return;
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = "en-US";
-      utterance.rate = 0.92;
-      window.speechSynthesis.speak(utterance);
+      // Aborted or Kokoro unavailable — silent
     }
   }, [apiUrl]);
 
@@ -162,7 +165,7 @@ export default function WatchPage() {
               timestamp: t.timestamp,
             }));
             setTranslations(entries);
-            if (entries.length > 0) setLastText(entries[entries.length - 1].target_text);
+            if (entries.length > 0) { const t = entries[entries.length - 1].target_text; setLastText(t); lastTextRef.current = t; }
             return;
           }
 
@@ -235,6 +238,7 @@ export default function WatchPage() {
             };
             setTranslations((prev) => [...prev.slice(-49), entry]);
             setLastText(entry.target_text);
+            lastTextRef.current = entry.target_text;
             // Skip TTS while song overlay is active
             if (!activeSongRef.current) {
               speakRef.current?.(entry.target_text);
@@ -332,9 +336,9 @@ export default function WatchPage() {
             onClick={() => {
               setTtsEnabled((v) => {
                 if (v) {
+                  ttsAbortRef.current?.abort();
                   currentSourceRef.current?.stop();
                   currentSourceRef.current = null;
-                  window.speechSynthesis?.cancel();
                 }
                 return !v;
               });
