@@ -68,6 +68,11 @@ export default function WatchPage() {
 
   const unlockAudio = useCallback(async () => {
     if (audioUnlockedRef.current) return;
+    // Unlock Web Speech API for iOS synchronously before any await
+    if ("speechSynthesis" in window) {
+      const s = new SpeechSynthesisUtterance("");
+      window.speechSynthesis.speak(s);
+    }
     try {
       if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
       if (audioCtxRef.current.state === "suspended") await audioCtxRef.current.resume();
