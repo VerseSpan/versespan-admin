@@ -145,6 +145,7 @@ export default function WatchPage() {
   const ttsAbortRef = useRef<AbortController | null>(null);
   const lastTextRef = useRef("");
   const activeSongRef = useRef<ActiveSong | null>(null);
+  const sessionEndedRef = useRef(false);
   const idCounter = useRef(0);
 
   // Metadata tracking refs
@@ -341,6 +342,7 @@ export default function WatchPage() {
           }
 
           if (msg.type === "error" && msg.error === "Session has ended") {
+            sessionEndedRef.current = true;
             setStatus("ended");
             ws.close();
           }
@@ -348,7 +350,7 @@ export default function WatchPage() {
       };
 
       ws.onclose = (event) => {
-        if (dead) return;
+        if (dead || sessionEndedRef.current) return;
         lastDisconnectCodeRef.current = event.code;
         const delay = event.code === 1000 ? 0 : 3000;
         if (event.code !== 1000) connectionDropsRef.current += 1;
