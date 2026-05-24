@@ -224,11 +224,23 @@ export default function WatchPage() {
     let dead = false;
 
     function connect() {
+      console.log(`[Watch] Connecting to ${url}`);
       setStatus("connecting");
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
-      ws.onopen = () => setStatus("connected");
+      ws.onopen = () => {
+        console.log(`[Watch] Connected (drops so far: ${connectionDropsRef.current})`);
+        setStatus("connected");
+        // Heartbeat: watch page sends no audio so the connection looks idle
+        // to Fly.io's proxy during translation gaps. Ping every 20s to keep it alive.
+        const heartbeat = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "ping" }));
+          }
+        }, 20000);
+        ws.addEventListener("close", () => clearInterval(heartbeat));
+      };
 
       ws.onmessage = (event) => {
         try {
@@ -236,6 +248,16 @@ export default function WatchPage() {
 
           if (msg.type === "ping") {
             ws.send(JSON.stringify({ type: "ping" }));
+            return;
+          }
+
+          if (msg.type === "status") {
+            if (msg.target_language) {
+              const tgt = msg.target_language as "en" | "es";
+              sessionTargetLangRef.current = tgt;
+              setTargetLang(tgt);
+              console.log(`[Watch] Session language: ${msg.source_language} → ${msg.target_language}`);
+            }
             return;
           }
 
@@ -252,6 +274,7 @@ export default function WatchPage() {
               content_type: (t.content_type as Translation["content_type"]) || "speech",
               timestamp: t.timestamp,
             }));
+            console.log(`[Watch] History loaded: ${entries.length} translations`);
             setTranslations(entries);
             if (entries.length > 0) {
               const t = entries[entries.length - 1].target_text;
@@ -295,6 +318,7 @@ export default function WatchPage() {
           }
 
           if (msg.type === "song_started" && msg.song_id) {
+            console.log(`[Watch] Song started: ${JSON.stringify(msg.song_titles)}`);
             const tgt = msg.target_lang || "en";
             const song = {
               song_id: msg.song_id,
@@ -312,20 +336,27 @@ export default function WatchPage() {
           }
 
           if (msg.type === "song_ended") {
+            console.log("[Watch] Song ended");
             activeSongRef.current = null;
             setActiveSong(null);
             setPresenting(null);
           }
 
-          if (msg.type === "translation" && (msg.translated_text || msg.target_text)) {
+          if (msg.type === "translation") {
+            const text = msg.translated_text || msg.target_text;
+            if (!text) {
+              console.warn("[Watch] Translation dropped — empty target_text", msg);
+              return;
+            }
             const now = Date.now();
             const entry: Translation = {
               id: ++idCounter.current,
               source_text: msg.source_text || "",
-              target_text: msg.translated_text || msg.target_text,
+              target_text: text,
               content_type: msg.content_type || "speech",
               timestamp: msg.timestamp || new Date().toISOString(),
             };
+            console.log(`[Watch] Translation received (${msg.content_type || "speech"}): "${msg.source_text}" → "${text}" | TTS lang: ${sessionTargetLangRef.current}`);
             setTranslations((prev) => [...prev.slice(-49), entry]);
             setLastText(entry.target_text);
             lastTextRef.current = entry.target_text;
@@ -341,12 +372,19 @@ export default function WatchPage() {
             }
           }
 
-          if (msg.type === "error" && msg.error === "Session has ended") {
-            sessionEndedRef.current = true;
-            setStatus("ended");
-            ws.close();
+          if (msg.type === "error") {
+            if (msg.error === "Session has ended") {
+              console.log("[Watch] Session ended by admin");
+              sessionEndedRef.current = true;
+              setStatus("ended");
+              ws.close();
+            } else {
+              console.error("[Watch] Server error:", msg.error);
+            }
           }
-        } catch {}
+        } catch (e) {
+          console.error("[Watch] Failed to parse message:", e, event.data);
+        }
       };
 
       ws.onclose = (event) => {
@@ -354,11 +392,15 @@ export default function WatchPage() {
         lastDisconnectCodeRef.current = event.code;
         const delay = event.code === 1000 ? 0 : 3000;
         if (event.code !== 1000) connectionDropsRef.current += 1;
+        console.warn(`[Watch] Disconnected — code: ${event.code}, reason: "${event.reason || "none"}", clean: ${event.wasClean}, drops: ${connectionDropsRef.current}, reconnecting in ${delay}ms`);
         setStatus("disconnected");
         reconnectTimeout = setTimeout(connect, delay);
       };
 
-      ws.onerror = () => ws.close();
+      ws.onerror = (e) => {
+        console.error("[Watch] WebSocket error:", e);
+        ws.close();
+      };
     }
 
     connect();
