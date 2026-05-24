@@ -143,6 +143,8 @@ export default function WatchPage() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const ttsAbortRef = useRef<AbortController | null>(null);
+  const ttsQueueRef = useRef<string[]>([]);
+  const ttsProcessingRef = useRef(false);
   const lastTextRef = useRef("");
   const activeSongRef = useRef<ActiveSong | null>(null);
   const sessionEndedRef = useRef(false);
@@ -162,42 +164,53 @@ export default function WatchPage() {
   useEffect(() => { ttsEnabledRef.current = ttsEnabled; }, [ttsEnabled]);
   useEffect(() => { audioUnlockedRef.current = audioUnlocked; }, [audioUnlocked]);
 
-  const speak = useCallback(async (text: string, receivedAt?: number) => {
+  const speak = useCallback(async (text: string) => {
     if (!ttsEnabledRef.current || !audioUnlockedRef.current || !text.trim()) return;
 
-    ttsAbortRef.current?.abort();
-    currentSourceRef.current?.stop();
-    currentSourceRef.current = null;
+    ttsQueueRef.current.push(text);
+    if (ttsProcessingRef.current) return;
+    ttsProcessingRef.current = true;
 
-    const controller = new AbortController();
-    ttsAbortRef.current = controller;
-
-    try {
-      const params = new URLSearchParams({ text, lang: sessionTargetLangRef.current });
-      const res = await fetch(`${apiUrl}/api/tts?${params}`, { signal: controller.signal });
-      if (!res.ok || controller.signal.aborted) return;
-
-      const arrayBuffer = await res.arrayBuffer();
-      if (controller.signal.aborted) return;
-
-      const ctx = audioCtxRef.current!;
-      if (ctx.state === "suspended") await ctx.resume();
-
-      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-      if (controller.signal.aborted) return;
-
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(ctx.destination);
-      source.start();
-      currentSourceRef.current = source;
-
-      if (receivedAt) {
-        ttsLatenciesRef.current.push(Date.now() - receivedAt);
+    while (ttsQueueRef.current.length > 0) {
+      if (!ttsEnabledRef.current) {
+        ttsQueueRef.current = [];
+        break;
       }
-    } catch {
-      // Aborted or Kokoro unavailable — silent
+
+      const item = ttsQueueRef.current.shift()!;
+      const controller = new AbortController();
+      ttsAbortRef.current = controller;
+
+      try {
+        const params = new URLSearchParams({ text: item, lang: sessionTargetLangRef.current });
+        const res = await fetch(`${apiUrl}/api/tts?${params}`, { signal: controller.signal });
+        if (!res.ok || controller.signal.aborted) continue;
+
+        const arrayBuffer = await res.arrayBuffer();
+        if (controller.signal.aborted) continue;
+
+        const ctx = audioCtxRef.current!;
+        if (ctx.state === "suspended") await ctx.resume();
+
+        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+        if (controller.signal.aborted) continue;
+
+        const startedAt = Date.now();
+        await new Promise<void>((resolve) => {
+          const source = ctx.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(ctx.destination);
+          source.onended = () => resolve();
+          source.start();
+          currentSourceRef.current = source;
+        });
+        ttsLatenciesRef.current.push(Date.now() - startedAt);
+      } catch {
+        // Aborted or TTS unavailable — silent
+      }
     }
+
+    ttsProcessingRef.current = false;
   }, [apiUrl]);
 
   const unlockAudio = useCallback(async () => {
@@ -368,7 +381,7 @@ export default function WatchPage() {
             if (wsMessageTimestampsRef.current.length > 200) wsMessageTimestampsRef.current.shift();
 
             if (!activeSongRef.current) {
-              speak(entry.target_text, now);
+              speak(entry.target_text);
             }
           }
 
@@ -664,6 +677,7 @@ export default function WatchPage() {
                   ttsAbortRef.current?.abort();
                   currentSourceRef.current?.stop();
                   currentSourceRef.current = null;
+                  ttsQueueRef.current = [];
                 }
                 return !v;
               });
