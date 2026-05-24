@@ -171,43 +171,55 @@ export default function WatchPage() {
     if (ttsProcessingRef.current) return;
     ttsProcessingRef.current = true;
 
-    while (ttsQueueRef.current.length > 0) {
-      if (!ttsEnabledRef.current) {
-        ttsQueueRef.current = [];
-        break;
-      }
-
-      const item = ttsQueueRef.current.shift()!;
-      const controller = new AbortController();
-      ttsAbortRef.current = controller;
-
+    const fetchAudio = async (t: string): Promise<AudioBuffer | null> => {
+      const ctrl = new AbortController();
+      ttsAbortRef.current = ctrl;
       try {
-        const params = new URLSearchParams({ text: item, lang: sessionTargetLangRef.current });
-        const res = await fetch(`${apiUrl}/api/tts?${params}`, { signal: controller.signal });
-        if (!res.ok || controller.signal.aborted) continue;
-
-        const arrayBuffer = await res.arrayBuffer();
-        if (controller.signal.aborted) continue;
-
+        const params = new URLSearchParams({ text: t, lang: sessionTargetLangRef.current });
+        const res = await fetch(`${apiUrl}/api/tts?${params}`, { signal: ctrl.signal });
+        if (!res.ok || ctrl.signal.aborted) return null;
+        const ab = await res.arrayBuffer();
+        if (ctrl.signal.aborted) return null;
         const ctx = audioCtxRef.current!;
         if (ctx.state === "suspended") await ctx.resume();
+        return ctx.decodeAudioData(ab);
+      } catch { return null; }
+    };
 
-        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-        if (controller.signal.aborted) continue;
+    // Prefetch pipeline: while item N plays, fetch item N+1 in parallel
+    // so playback is gapless.
+    let prefetch: Promise<AudioBuffer | null> | null = null;
 
-        const startedAt = Date.now();
-        await new Promise<void>((resolve) => {
-          const source = ctx.createBufferSource();
-          source.buffer = audioBuffer;
-          source.connect(ctx.destination);
-          source.onended = () => resolve();
-          source.start();
-          currentSourceRef.current = source;
-        });
-        ttsLatenciesRef.current.push(Date.now() - startedAt);
-      } catch {
-        // Aborted or TTS unavailable — silent
+    while (ttsQueueRef.current.length > 0) {
+      if (!ttsEnabledRef.current) { ttsQueueRef.current = []; break; }
+
+      const item = ttsQueueRef.current.shift()!;
+
+      // Use pre-fetched buffer if ready, otherwise fetch now
+      const bufferPromise = prefetch ?? fetchAudio(item);
+      prefetch = null;
+
+      // Kick off fetch for the next queued item immediately (parallel)
+      if (ttsQueueRef.current.length > 0) {
+        prefetch = fetchAudio(ttsQueueRef.current[0]);
       }
+
+      const audioBuffer = await bufferPromise;
+      if (!audioBuffer) continue;
+
+      const ctx = audioCtxRef.current!;
+      await new Promise<void>((resolve) => {
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
+        source.onended = () => resolve();
+        source.start();
+        currentSourceRef.current = source;
+        // Also start prefetch while playing if a new item arrived after fetch began
+        if (!prefetch && ttsQueueRef.current.length > 0) {
+          prefetch = fetchAudio(ttsQueueRef.current[0]);
+        }
+      });
     }
 
     ttsProcessingRef.current = false;
