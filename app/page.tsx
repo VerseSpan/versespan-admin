@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useStore, mapBackendSession, type BackendSession } from "@/lib/store";
 import { StatCard } from "@/components/StatCard";
 import { SessionRow } from "@/components/SessionRow";
+import { SystemStatus } from "@/components/SystemStatus";
 import { api } from "@/lib/api";
 
 export default function DashboardPage() {
@@ -51,6 +52,7 @@ export default function DashboardPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-8">
       <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
+      <SystemStatus />
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded text-red-800 text-sm">
           <strong>Error:</strong> {error}
