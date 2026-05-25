@@ -5,12 +5,9 @@ const RUNPOD_POD_ID = process.env.RUNPOD_POD_ID!;
 const RUNPOD_GQL = "https://api.runpod.io/graphql";
 
 async function gql(query: string) {
-  const res = await fetch(RUNPOD_GQL, {
+  const res = await fetch(`${RUNPOD_GQL}?api_key=${RUNPOD_API_KEY}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${RUNPOD_API_KEY}`,
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query }),
     cache: "no-store",
   });
