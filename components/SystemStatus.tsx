@@ -48,7 +48,7 @@ const MODEL_LABELS: Record<string, string> = {
 export function SystemStatus() {
   const [pod, setPod] = useState<PodStatus | null>(null);
   const [health, setHealth] = useState<HealthStatus | null>(null);
-  const [podLoading, setPodLoading] = useState(false);
+  const [podLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [healthError, setHealthError] = useState(false);
   const healthIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -97,7 +97,7 @@ export function SystemStatus() {
     };
   }, [pod?.desiredStatus]);
 
-  async function handleAction(action: "start" | "stop") {
+  async function handleAction(action: "start" | "stop" | "deploy") {
     setActionLoading(true);
     try {
       await fetch("/api/runpod", {
@@ -204,21 +204,29 @@ export function SystemStatus() {
         </p>
       )}
 
-      {/* Start / Stop */}
+      {/* Start / Stop / Deploy */}
       <div className="flex gap-2 pt-1">
         <button
           disabled={isRunning || actionLoading || !isStopped}
           onClick={() => handleAction("start")}
           className="flex-1 px-4 py-2 rounded text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
         >
-          {actionLoading && !isRunning ? "Starting..." : "Start GPU"}
+          {actionLoading && !isRunning ? "Starting..." : "Start"}
         </button>
         <button
           disabled={!isRunning || actionLoading}
           onClick={() => handleAction("stop")}
           className="flex-1 px-4 py-2 rounded text-sm font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
         >
-          {actionLoading && isRunning ? "Stopping..." : "Stop GPU"}
+          {actionLoading && isRunning ? "Stopping..." : "Stop"}
+        </button>
+        <button
+          disabled={actionLoading}
+          onClick={() => handleAction("deploy")}
+          className="flex-1 px-4 py-2 rounded text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+          title="Pull latest image and restart"
+        >
+          {actionLoading ? "Deploying..." : "Deploy latest"}
         </button>
       </div>
     </div>

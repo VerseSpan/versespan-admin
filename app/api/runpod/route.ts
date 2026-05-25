@@ -72,6 +72,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ pod: data.podStop });
     }
 
+    if (action === "deploy") {
+      // Stop if running, update to :latest, then start
+      const statusData = await gql(`
+        query { pod(input: { podId: "${RUNPOD_POD_ID}" }) { desiredStatus } }
+      `);
+      if (statusData.pod.desiredStatus === "RUNNING") {
+        await gql(`
+          mutation { podStop(input: { podId: "${RUNPOD_POD_ID}" }) { id } }
+        `);
+        await new Promise((r) => setTimeout(r, 20000));
+      }
+      const image = process.env.RUNPOD_IMAGE || "ghcr.io/versespan/versespan-backend:latest";
+      await gql(`
+        mutation { podEditJob(input: { podId: "${RUNPOD_POD_ID}", imageName: "${image}" }) { id } }
+      `);
+      const data = await gql(`
+        mutation {
+          podResume(input: { podId: "${RUNPOD_POD_ID}", gpuCount: 1 }) {
+            id
+            desiredStatus
+          }
+        }
+      `);
+      return NextResponse.json({ pod: data.podResume });
+    }
+
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (err) {
     return NextResponse.json(
