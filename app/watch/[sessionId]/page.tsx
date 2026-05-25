@@ -38,11 +38,6 @@ const CONTENT_COLORS: Record<string, string> = {
   speech: "text-gray-400",
 };
 
-const CONTENT_LABELS: Record<string, string> = {
-  scripture: "Scripture",
-  song: "Song",
-  speech: "Speech",
-};
 
 const I18N = {
   en: {
@@ -67,6 +62,20 @@ const I18N = {
     back: "Back",
     thankYou: "Thank you for your feedback!",
     thankYouSub: "Your response helps us improve the experience.",
+    tapToEnable: "Tap to enable audio",
+    tapToEnableSub: "Live translation with voice will start automatically",
+    live: "Live",
+    connecting: "Connecting...",
+    reconnecting: "Reconnecting...",
+    audioOn: "Audio On",
+    audioOff: "Audio Off",
+    nowPlaying: "Now Playing",
+    liveTranslation: "Live Translation",
+    connectingStream: "Connecting to translation stream...",
+    scripture: "Scripture",
+    labelSpeech: "Speech",
+    labelSong: "Song",
+    labelScripture: "Scripture",
   },
   es: {
     sessionEnded: "El servicio ha terminado",
@@ -90,6 +99,20 @@ const I18N = {
     back: "Atrás",
     thankYou: "¡Gracias por tus comentarios!",
     thankYouSub: "Tu respuesta nos ayuda a mejorar la experiencia.",
+    tapToEnable: "Toca para activar el audio",
+    tapToEnableSub: "La traducción en vivo con voz comenzará automáticamente",
+    live: "En vivo",
+    connecting: "Conectando...",
+    reconnecting: "Reconectando...",
+    audioOn: "Audio activado",
+    audioOff: "Audio desactivado",
+    nowPlaying: "Reproduciendo",
+    liveTranslation: "Traducción en vivo",
+    connectingStream: "Conectando al flujo de traducción...",
+    scripture: "Escritura",
+    labelSpeech: "Habla",
+    labelSong: "Canción",
+    labelScripture: "Escritura",
   },
 };
 
@@ -645,8 +668,8 @@ export default function WatchPage() {
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-gray-950/90 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-4 px-8 text-center">
             <span className="text-5xl">🔊</span>
-            <p className="text-xl font-semibold text-white">Tap to enable audio</p>
-            <p className="text-sm text-gray-400">Live translation with voice will start automatically</p>
+            <p className="text-xl font-semibold text-white">{t.tapToEnable}</p>
+            <p className="text-sm text-gray-400">{t.tapToEnableSub}</p>
           </div>
         </div>
       )}
@@ -662,7 +685,7 @@ export default function WatchPage() {
             }`}
           />
           <span className="text-sm text-gray-400">
-            {status === "connected" ? "Live" : status === "connecting" ? "Connecting..." : "Reconnecting..."}
+            {status === "connected" ? t.live : status === "connecting" ? t.connecting : t.reconnecting}
           </span>
         </div>
 
@@ -698,7 +721,7 @@ export default function WatchPage() {
               ttsEnabled ? "bg-blue-600 text-white" : "bg-gray-700 text-gray-400"
             }`}
           >
-            {ttsEnabled ? "🔊 Audio On" : "🔇 Audio Off"}
+            {ttsEnabled ? `🔊 ${t.audioOn}` : `🔇 ${t.audioOff}`}
           </button>
         </div>
       </div>
@@ -710,11 +733,11 @@ export default function WatchPage() {
             <div className="flex items-center justify-between px-4 py-2 bg-gray-800/60 border-b border-gray-800 flex-shrink-0">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-                <span className="text-xs font-semibold text-purple-400 uppercase tracking-widest">Now Playing</span>
+                <span className="text-xs font-semibold text-purple-400 uppercase tracking-widest">{t.nowPlaying}</span>
               </div>
               <span className="flex items-center gap-1.5 text-xs font-semibold text-green-400 uppercase tracking-widest">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                Presenting Now
+                {t.live}
               </span>
             </div>
             <div className="flex-1 overflow-y-auto px-5 py-6">
@@ -754,7 +777,7 @@ export default function WatchPage() {
             <div className="flex-1 flex flex-col overflow-hidden min-h-0">
               <div className="flex items-center gap-2 px-4 py-2 bg-gray-900 border-b border-gray-800">
                 <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                <span className="text-xs font-semibold text-blue-400 uppercase tracking-widest">Live Translation</span>
+                <span className="text-xs font-semibold text-blue-400 uppercase tracking-widest">{t.liveTranslation}</span>
               </div>
 
               {lastText && (
@@ -767,7 +790,7 @@ export default function WatchPage() {
                 {status === "connecting" && translations.length === 0 && (
                   <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-500">
                     <div className="w-8 h-8 border-2 border-gray-600 border-t-blue-400 rounded-full animate-spin" />
-                    <p className="text-sm">Connecting to translation stream...</p>
+                    <p className="text-sm">{t.connectingStream}</p>
                   </div>
                 )}
 
@@ -790,11 +813,11 @@ export default function WatchPage() {
                 <div className="flex items-center justify-between px-4 py-2 bg-gray-800/60 border-b border-gray-800 sticky top-0">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                    <span className="text-xs font-semibold text-amber-400 uppercase tracking-widest">Scripture</span>
+                    <span className="text-xs font-semibold text-amber-400 uppercase tracking-widest">{t.scripture}</span>
                   </div>
                   <span className="flex items-center gap-1.5 text-xs font-semibold text-green-400 uppercase tracking-widest">
                     <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                    Presenting Now
+                    {t.live}
                   </span>
                 </div>
                 <div className="px-5 py-4 flex flex-col gap-3">
