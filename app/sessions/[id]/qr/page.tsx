@@ -1,17 +1,41 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
 import Link from "next/link";
+import { api } from "@/lib/api";
+
+const POSTER_TEXT: Record<string, { headline: string; subtitle: string }> = {
+  en: {
+    headline: "Join Live Translation",
+    subtitle: "Scan with your phone camera to follow along",
+  },
+  es: {
+    headline: "Únete a la Traducción en Vivo",
+    subtitle: "Escanea con tu cámara para seguir la sesión",
+  },
+  pt: {
+    headline: "Acesse a Tradução ao Vivo",
+    subtitle: "Escaneie com a câmera do seu celular para acompanhar",
+  },
+};
 
 export default function QRDisplayPage() {
   const { id } = useParams<{ id: string }>();
   const [origin] = useState(() =>
     typeof window !== "undefined" ? window.location.origin : ""
   );
+  const [targetLang, setTargetLang] = useState("en");
   const downloadCanvasRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    api.getSession(id).then((s: { target_language?: string }) => {
+      if (s.target_language) setTargetLang(s.target_language);
+    }).catch(() => {});
+  }, [id]);
+
+  const text = POSTER_TEXT[targetLang] ?? POSTER_TEXT.en;
   const watchUrl = `${origin}/watch/${id}`;
 
   function downloadPNG() {
@@ -70,16 +94,12 @@ export default function QRDisplayPage() {
     ctx.textAlign = "center";
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 68px system-ui, -apple-system, sans-serif";
-    ctx.fillText("Join Live Translation", W / 2, cardY + cardSize + 80);
+    ctx.fillText(text.headline, W / 2, cardY + cardSize + 80);
 
     // Subtitle
     ctx.fillStyle = "#6b7280";
     ctx.font = "30px system-ui, -apple-system, sans-serif";
-    ctx.fillText(
-      "Scan with your phone camera to follow along",
-      W / 2,
-      cardY + cardSize + 130
-    );
+    ctx.fillText(text.subtitle, W / 2, cardY + cardSize + 130);
 
     // Branding top
     ctx.fillStyle = "#7c5cfc";
@@ -172,11 +192,11 @@ export default function QRDisplayPage() {
             <div className="text-center">
               <p className="text-white font-bold tracking-tight"
                 style={{ fontSize: "clamp(1.6rem, 3.8vw, 3.5rem)" }}>
-                Join Live Translation
+                {text.headline}
               </p>
               <p className="text-gray-500 mt-2"
                 style={{ fontSize: "clamp(0.85rem, 1.6vw, 1.4rem)" }}>
-                Scan with your phone camera to follow along
+                {text.subtitle}
               </p>
             </div>
 
