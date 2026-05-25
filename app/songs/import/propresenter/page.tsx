@@ -128,13 +128,23 @@ export default function ImportFromProPresenterPage() {
     if (!selectedPres) return;
     setFetchingLyrics(true);
     try {
-      const data = await api.proPresenterPresentation(selectedPres.uuid) as { slide_text: string[] };
+      const data = await api.proPresenterPresentation(selectedPres.uuid) as { slide_text: string[]; detected_lang?: string };
       const texts: string[] = data.slide_text || [];
+      // Auto-detect source language; fall back to current selection
+      const detectedLang = data.detected_lang && churchLanguages.includes(data.detected_lang)
+        ? data.detected_lang
+        : sourceLang;
+      if (detectedLang !== sourceLang) {
+        setSourceLang(detectedLang);
+        if (targetLang === detectedLang) {
+          setTargetLang(churchLanguages.find(l => l !== detectedLang) || "en");
+        }
+      }
       if (texts.length > 0) {
         setSections(texts.map((t, i) => ({
           section_number: i + 1,
           section_name: `Slide ${i + 1}`,
-          texts: { [sourceLang]: t },
+          texts: { [detectedLang]: t },
         })));
       }
     } catch {
@@ -381,7 +391,7 @@ export default function ImportFromProPresenterPage() {
         </div>
 
         {/* Language direction selector */}
-        {churchLanguages.length > 2 && (
+        {churchLanguages.length >= 2 && (
           <div className="flex items-center gap-4">
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Source language</label>
