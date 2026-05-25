@@ -1,18 +1,14 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
 import Link from "next/link";
 
 export default function QRDisplayPage() {
   const { id } = useParams<{ id: string }>();
-  const [origin, setOrigin] = useState("");
+  const [origin] = useState(() => typeof window !== "undefined" ? window.location.origin : "");
   const downloadCanvasRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
 
   const watchUrl = `${origin}/watch/${id}`;
 
