@@ -13,7 +13,7 @@ export function LayoutWithSidebar({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside className="w-64 bg-gray-900 flex flex-col py-6 px-4">
         <div className="mb-8">
-          <span className="font-bold text-lg tracking-tight text-white">VerbBridge</span>
+          <span className="font-bold text-lg tracking-tight text-white">Versespan</span>
           <div className="mt-1">
             <span className="text-xs font-semibold tracking-widest uppercase px-2 py-0.5 rounded bg-amber-400 text-amber-900">
               Alpha

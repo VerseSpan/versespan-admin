@@ -38,7 +38,7 @@ function LoginForm() {
       className="bg-white rounded shadow p-8 w-full max-w-sm space-y-6"
     >
       <div className="text-center mb-4">
-        <h1 className="text-2xl font-extrabold text-gray-900 mb-1">Church Translator</h1>
+        <h1 className="text-2xl font-extrabold text-gray-900 mb-1">Versespan</h1>
         <div className="text-gray-500 text-sm">Admin Dashboard</div>
       </div>
       <div>

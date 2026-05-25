@@ -267,7 +267,7 @@ export default function SettingsPage() {
             </summary>
             <ol className="mt-2 text-sm text-gray-600 space-y-1 list-decimal list-inside">
               <li>Click <strong>Download for Windows</strong> or <strong>Download for macOS</strong> and copy it to the ProPresenter computer.</li>
-              <li>Run <strong>VerbBridge-Bridge.exe</strong> — it will appear in the system tray.</li>
+              <li>Run <strong>Versespan-Bridge.exe</strong> — it will appear in the system tray.</li>
               <li>On first launch, a dialog asks for your connection code.</li>
               <li>Click <strong>Show Connection Code</strong> above, copy it, and paste it into the dialog.</li>
               <li>The tray icon turns green when connected.</li>
