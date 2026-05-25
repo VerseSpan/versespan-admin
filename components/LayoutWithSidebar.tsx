@@ -1,9 +1,16 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { api } from "@/lib/api";
 
 export function LayoutWithSidebar({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    await api.logout();
+    router.push("/login");
+  }
   // Hide sidebar on /login and /watch (congregation view)
   if (pathname === "/login" || pathname.startsWith("/watch")) {
     return <>{children}</>;
@@ -44,7 +51,12 @@ export function LayoutWithSidebar({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="flex-1" />
-        <div className="text-xs text-gray-500 mt-8">Admin Dashboard</div>
+        <button
+          onClick={handleLogout}
+          className="mt-4 text-left rounded px-3 py-2 text-gray-400 hover:bg-gray-800 hover:text-white transition text-sm"
+        >
+          Sign out
+        </button>
       </aside>
       {/* Main content */}
       <main className="flex-1 p-8">{children}</main>
