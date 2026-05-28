@@ -346,6 +346,10 @@ export default function WatchPage() {
               setTargetLang(tgt as "en" | "es");
               activeSongRef.current = song;
               setActiveSong(song);
+              // Stop any playing TTS and clear the queue so no queued translations
+              // play over the song
+              ttsAbortRef.current?.abort();
+              ttsQueueRef.current = [];
               currentSourceRef.current?.stop();
               currentSourceRef.current = null;
               setPresenting({ content_type: "song", ...song });
@@ -378,6 +382,9 @@ export default function WatchPage() {
             sessionTargetLangRef.current = tgt;
             activeSongRef.current = song;
             setActiveSong(song);
+            // Stop any playing TTS and clear the queue
+            ttsAbortRef.current?.abort();
+            ttsQueueRef.current = [];
             currentSourceRef.current?.stop();
             currentSourceRef.current = null;
             setPresenting({ content_type: "song", ...song });
