@@ -138,7 +138,7 @@ export const useStore = create<Store>((set: (partial: Partial<Store> | ((state: 
           ? {
               ...s,
               translations: [translation, ...(s.translations || [])].slice(0, 100), // Keep last 100
-              translationCount: (s.translations?.length || 0) + 1,
+              translationCount: (s.translationCount || 0) + 1,
             }
           : s
       ),
