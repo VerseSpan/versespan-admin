@@ -161,6 +161,7 @@ export default function WatchPage() {
   // Stable refs
   const sessionTargetLangRef = useRef("en");
   const wsRef = useRef<WebSocket | null>(null);
+  const viewerIdRef = useRef<string>("");
   const ttsEnabledRef = useRef(true);
   const audioUnlockedRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -184,6 +185,17 @@ export default function WatchPage() {
   const lastDisconnectCodeRef = useRef<number | null>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+  // Generate or reuse a persistent viewer UUID from localStorage
+  useEffect(() => {
+    let id = localStorage.getItem("viewer_id");
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem("viewer_id", id);
+    }
+    viewerIdRef.current = id;
+  }, []);
+
   useEffect(() => { ttsEnabledRef.current = ttsEnabled; }, [ttsEnabled]);
   useEffect(() => { audioUnlockedRef.current = audioUnlocked; }, [audioUnlocked]);
 
@@ -198,7 +210,7 @@ export default function WatchPage() {
       const ctrl = new AbortController();
       ttsAbortRef.current = ctrl;
       try {
-        const params = new URLSearchParams({ text: t, lang: sessionTargetLangRef.current });
+        const params = new URLSearchParams({ text: t, lang: sessionTargetLangRef.current, viewer_id: viewerIdRef.current, session_id: sessionId ?? "" });
         const res = await fetch(`${apiUrl}/api/tts?${params}`, { signal: ctrl.signal });
         if (!res.ok || ctrl.signal.aborted) return null;
         const ab = await res.arrayBuffer();
@@ -213,39 +225,41 @@ export default function WatchPage() {
     // so playback is gapless.
     let prefetch: Promise<AudioBuffer | null> | null = null;
 
-    while (ttsQueueRef.current.length > 0) {
-      if (!ttsEnabledRef.current) { ttsQueueRef.current = []; break; }
+    try {
+      while (ttsQueueRef.current.length > 0) {
+        if (!ttsEnabledRef.current) { ttsQueueRef.current = []; break; }
 
-      const item = ttsQueueRef.current.shift()!;
+        const item = ttsQueueRef.current.shift()!;
 
-      // Use pre-fetched buffer if ready, otherwise fetch now
-      const bufferPromise = prefetch ?? fetchAudio(item);
-      prefetch = null;
+        // Use pre-fetched buffer if ready, otherwise fetch now
+        const bufferPromise = prefetch ?? fetchAudio(item);
+        prefetch = null;
 
-      // Kick off fetch for the next queued item immediately (parallel)
-      if (ttsQueueRef.current.length > 0) {
-        prefetch = fetchAudio(ttsQueueRef.current[0]);
-      }
-
-      const audioBuffer = await bufferPromise;
-      if (!audioBuffer) continue;
-
-      const ctx = audioCtxRef.current!;
-      await new Promise<void>((resolve) => {
-        const source = ctx.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(ctx.destination);
-        source.onended = () => resolve();
-        source.start();
-        currentSourceRef.current = source;
-        // Also start prefetch while playing if a new item arrived after fetch began
-        if (!prefetch && ttsQueueRef.current.length > 0) {
+        // Kick off fetch for the next queued item immediately (parallel)
+        if (ttsQueueRef.current.length > 0) {
           prefetch = fetchAudio(ttsQueueRef.current[0]);
         }
-      });
-    }
 
-    ttsProcessingRef.current = false;
+        const audioBuffer = await bufferPromise;
+        if (!audioBuffer) continue;
+
+        const ctx = audioCtxRef.current!;
+        await new Promise<void>((resolve) => {
+          const source = ctx.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(ctx.destination);
+          source.onended = () => resolve();
+          source.start();
+          currentSourceRef.current = source;
+          // Also start prefetch while playing if a new item arrived after fetch began
+          if (!prefetch && ttsQueueRef.current.length > 0) {
+            prefetch = fetchAudio(ttsQueueRef.current[0]);
+          }
+        });
+      }
+    } finally {
+      ttsProcessingRef.current = false;
+    }
   }, [apiUrl]);
 
   const unlockAudio = useCallback(async () => {
@@ -266,7 +280,7 @@ export default function WatchPage() {
 
     const wsApiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const wsUrl = wsApiUrl.replace("http://", "ws://").replace("https://", "wss://");
-    const url = `${wsUrl}/api/ws/watch/${sessionId}`;
+    const url = `${wsUrl}/api/ws/watch/${sessionId}?viewer_id=${viewerIdRef.current}`;
 
     let reconnectTimeout: ReturnType<typeof setTimeout>;
     let dead = false;
@@ -496,6 +510,7 @@ export default function WatchPage() {
   const submitFeedback = useCallback(async () => {
     const payload = {
       session_id: sessionId,
+      viewer_id: viewerIdRef.current || null,
       rating_overall: form.ratingOverall,
       rating_translation: form.ratingTranslation,
       rating_audio: form.ratingAudio,

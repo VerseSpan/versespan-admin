@@ -46,3 +46,6 @@ next-env.d.ts
 # env files — commit .env.example only
 .env*
 !.env.example
+
+# Local Netlify folder
+.netlify
