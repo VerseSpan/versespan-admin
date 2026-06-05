@@ -50,34 +50,68 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
-      <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
+      <h1
+        style={{
+          fontFamily: "var(--font-cormorant), 'Cormorant Garamond', serif",
+          fontSize: "2rem",
+          fontWeight: 600,
+          color: "#F5F0E8",
+        }}
+      >
+        Dashboard
+      </h1>
       {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded text-red-800 text-sm">
+        <div
+          className="p-4 rounded-lg text-sm"
+          style={{ color: "#F87171", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)" }}
+        >
           <strong>Error:</strong> {error}
         </div>
       )}
       <div className="grid grid-cols-2 gap-4">
-        <StatCard label="Active Sessions" value={activeSessions.length} color="bg-blue-600" />
-        <StatCard label="Total Sessions" value={totalSessions} color="bg-blue-500" />
+        <StatCard label="Active Sessions" value={activeSessions.length} />
+        <StatCard label="Total Sessions" value={totalSessions} />
       </div>
       <div>
         <Link href="/sessions/new">
-          <button className="bg-blue-600 text-white px-6 py-2 rounded shadow hover:bg-blue-700 transition font-semibold">
+          <button
+            className="px-6 py-2.5 rounded-lg text-sm font-semibold transition-all"
+            style={{ background: "#C9A84C", color: "#09090F" }}
+          >
             + New Session
           </button>
         </Link>
       </div>
       <div>
-        <h2 className="text-lg font-semibold mb-2">Recent Sessions</h2>
-        <div className="bg-white rounded shadow divide-y">
+        <h2
+          className="text-base font-semibold mb-3"
+          style={{
+            color: "#6B6B7A",
+            fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif",
+            fontSize: "0.7rem",
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+          }}
+        >
+          Recent Sessions
+        </h2>
+        <div
+          className="rounded-xl divide-y overflow-hidden"
+          style={{ background: "#111118", border: "1px solid #1E1E2A" }}
+        >
           {isLoading ? (
-            <div className="px-4 py-6 text-gray-500 text-center">Loading sessions...</div>
+            <div className="px-5 py-8 text-center text-sm" style={{ color: "#3A3A4A" }}>
+              Loading sessions...
+            </div>
           ) : sessions.length > 0 ? (
             sessions.slice(0, 5).map((session) => (
               <Link
                 key={session.id}
                 href={`/sessions/${session.id}`}
-                className="block hover:bg-gray-50 transition"
+                className="block transition-colors"
+                style={{ borderBottom: "1px solid #1E1E2A" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.02)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; }}
               >
                 <SessionRow
                   name={session.name}
@@ -88,7 +122,9 @@ export default function DashboardPage() {
               </Link>
             ))
           ) : (
-            <div className="px-4 py-3 text-gray-400">No sessions found.</div>
+            <div className="px-5 py-6 text-sm" style={{ color: "#3A3A4A" }}>
+              No sessions found.
+            </div>
           )}
         </div>
       </div>

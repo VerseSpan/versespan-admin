@@ -11,7 +11,7 @@ function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const from = searchParams.get('from') || '/';
+  const from = searchParams.get("from") || "/";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -23,9 +23,7 @@ function LoginForm() {
     setIsLoading(true);
     try {
       await api.login(email, password);
-      // Hard redirect ensures the auth cookie is sent with the next request
-      // before the middleware checks it
-      window.location.href = from.startsWith('/') && !from.startsWith('/login') ? from : '/';
+      window.location.href = from.startsWith("/") && !from.startsWith("/login") ? from : "/";
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Login failed");
       setIsLoading(false);
@@ -35,39 +33,134 @@ function LoginForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="bg-white rounded shadow p-8 w-full max-w-sm space-y-6"
+      className="w-full max-w-sm space-y-5"
+      style={{
+        background: "#111118",
+        border: "1px solid #1E1E2A",
+        borderTop: "2px solid #C9A84C",
+        borderRadius: "16px",
+        padding: "40px 36px",
+      }}
     >
-      <div className="text-center mb-4">
-        <h1 className="text-2xl font-extrabold text-gray-900 mb-1">Versespan</h1>
-        <div className="text-gray-500 text-sm">Admin Dashboard</div>
+      {/* Wordmark */}
+      <div className="text-center mb-6">
+        <div
+          style={{
+            fontFamily: "var(--font-cormorant), 'Cormorant Garamond', serif",
+            fontSize: "2.25rem",
+            fontWeight: 600,
+            color: "#C9A84C",
+            letterSpacing: "-0.02em",
+            lineHeight: 1,
+          }}
+        >
+          Versespan
+        </div>
+        <div
+          className="mt-2"
+          style={{
+            color: "#3A3A4A",
+            fontSize: "0.65rem",
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            fontWeight: 600,
+            fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif",
+          }}
+        >
+          Admin Dashboard
+        </div>
       </div>
-      <div>
-        <label className="block text-base font-bold mb-1 text-gray-900">Email</label>
-        <input
-          type="email"
-          className="w-full border rounded px-3 py-2 text-gray-900"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          required
-          disabled={isLoading}
-        />
+
+      {/* Fields */}
+      <div className="space-y-4">
+        <div>
+          <label
+            className="block mb-1.5"
+            style={{
+              color: "#6B6B7A",
+              fontSize: "0.65rem",
+              fontWeight: 700,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif",
+            }}
+          >
+            Email
+          </label>
+          <input
+            type="email"
+            className="w-full px-3 py-2.5 text-sm rounded-lg outline-none transition-all"
+            style={{
+              background: "#09090F",
+              border: "1px solid #1E1E2A",
+              color: "#F5F0E8",
+              fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif",
+            }}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            disabled={isLoading}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "#C9A84C"; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "#1E1E2A"; }}
+          />
+        </div>
+        <div>
+          <label
+            className="block mb-1.5"
+            style={{
+              color: "#6B6B7A",
+              fontSize: "0.65rem",
+              fontWeight: 700,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif",
+            }}
+          >
+            Password
+          </label>
+          <input
+            type="password"
+            className="w-full px-3 py-2.5 text-sm rounded-lg outline-none transition-all"
+            style={{
+              background: "#09090F",
+              border: "1px solid #1E1E2A",
+              color: "#F5F0E8",
+              fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif",
+            }}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            disabled={isLoading}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "#C9A84C"; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "#1E1E2A"; }}
+          />
+        </div>
       </div>
-      <div>
-        <label className="block text-base font-bold mb-1 text-gray-900">Password</label>
-        <input
-          type="password"
-          className="w-full border rounded px-3 py-2 text-gray-900"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          required
-          disabled={isLoading}
-        />
-      </div>
-      {error && <div className="text-red-600 text-sm">{error}</div>}
+
+      {error && (
+        <div
+          className="text-sm px-3 py-2 rounded-lg"
+          style={{
+            color: "#F87171",
+            background: "rgba(248,113,113,0.08)",
+            border: "1px solid rgba(248,113,113,0.2)",
+            fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif",
+          }}
+        >
+          {error}
+        </div>
+      )}
+
       <button
         type="submit"
         disabled={isLoading}
-        className="w-full bg-blue-600 text-white font-semibold py-2 rounded hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full py-3 rounded-lg text-sm font-semibold transition-all"
+        style={{
+          background: isLoading ? "#1E1E2A" : "#C9A84C",
+          color: isLoading ? "#3A3A4A" : "#09090F",
+          cursor: isLoading ? "not-allowed" : "pointer",
+          fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif",
+        }}
       >
         {isLoading ? "Signing in..." : "Sign In"}
       </button>
@@ -77,7 +170,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center" style={{ background: "#09090F" }}>
       <Suspense fallback={null}>
         <LoginForm />
       </Suspense>

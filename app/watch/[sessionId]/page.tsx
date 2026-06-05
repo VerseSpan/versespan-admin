@@ -119,14 +119,15 @@ const I18N = {
 function StarRating({ value, onChange, label }: { value: number; onChange: (v: number) => void; label: string }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-sm text-gray-300">{label}</span>
+      <span className="text-sm" style={{ color: "#6B6B7A" }}>{label}</span>
       <div className="flex gap-2">
         {[1, 2, 3, 4, 5].map((star) => (
           <button
             key={star}
             type="button"
             onClick={() => onChange(star)}
-            className={`text-2xl transition-transform active:scale-90 ${star <= value ? "text-yellow-400" : "text-gray-600"}`}
+            className="text-2xl transition-transform active:scale-90"
+            style={{ color: star <= value ? "#C9A84C" : "#1E1E2A" }}
           >
             ★
           </button>
@@ -535,17 +536,22 @@ export default function WatchPage() {
   const t = I18N[targetLang] ?? I18N.en;
 
   // Full-screen session-ended flow
+  const vsStyle = { background: "#09090F", color: "#F5F0E8", fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif" };
+
   if (status === "ended") {
     if (feedbackState === "submitted") {
       return (
-        <div className="h-screen bg-gray-950 text-white flex flex-col items-center justify-center px-8 text-center gap-5">
-          <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mb-2">
-            <svg className="w-8 h-8 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <div className="h-screen flex flex-col items-center justify-center px-8 text-center gap-5" style={vsStyle}>
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center mb-2"
+            style={{ background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.2)" }}
+          >
+            <svg className="w-8 h-8" style={{ color: "#4ADE80" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <p className="text-2xl font-semibold text-white">{t.thankYou}</p>
-          <p className="text-gray-400 text-sm max-w-xs">{t.thankYouSub}</p>
+          <p className="text-2xl font-semibold" style={{ fontFamily: "var(--font-cormorant), 'Cormorant Garamond', serif", color: "#F5F0E8" }}>{t.thankYou}</p>
+          <p className="text-sm max-w-xs" style={{ color: "#3A3A4A" }}>{t.thankYouSub}</p>
         </div>
       );
     }
@@ -553,18 +559,22 @@ export default function WatchPage() {
     if (feedbackState === "form") {
       const canSubmit = form.ratingOverall > 0 && form.ratingTranslation > 0 && form.ratingAudio > 0 && form.ratingAudioDelay > 0 && form.hadBugs !== null;
       return (
-        <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
+        <div className="h-screen flex flex-col overflow-hidden" style={vsStyle}>
           {/* Form header */}
-          <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800 flex-shrink-0">
+          <div
+            className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
+            style={{ background: "#0D0D17", borderBottom: "1px solid #1E1E2A" }}
+          >
             <button
               onClick={() => setFeedbackState("idle")}
-              className="text-gray-400 hover:text-white transition p-1"
+              className="p-1 transition"
+              style={{ color: "#3A3A4A" }}
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <p className="text-base font-semibold">{t.formTitle}</p>
+            <p className="text-base font-semibold" style={{ color: "#F5F0E8" }}>{t.formTitle}</p>
           </div>
 
           {/* Scrollable form body */}
@@ -573,20 +583,20 @@ export default function WatchPage() {
             <StarRating value={form.ratingTranslation} onChange={(v) => setForm((f) => ({ ...f, ratingTranslation: v }))} label={t.translation} />
             <StarRating value={form.ratingAudio} onChange={(v) => setForm((f) => ({ ...f, ratingAudio: v }))} label={t.audio} />
 
-            {/* Audio delay — labeled severity scale */}
+            {/* Audio delay */}
             <div className="flex flex-col gap-1.5">
-              <span className="text-sm text-gray-300">{t.audioDelay}</span>
+              <span className="text-sm" style={{ color: "#6B6B7A" }}>{t.audioDelay}</span>
               <div className="flex gap-2">
                 {t.audioDelayLabels.map((label, i) => (
                   <button
                     key={i}
                     type="button"
                     onClick={() => setForm((f) => ({ ...f, ratingAudioDelay: i + 1 }))}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition ${
-                      form.ratingAudioDelay === i + 1
-                        ? "bg-blue-600 text-white"
-                        : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                    }`}
+                    className="flex-1 py-1.5 rounded-lg text-xs font-medium transition"
+                    style={form.ratingAudioDelay === i + 1
+                      ? { background: "#C9A84C", color: "#09090F" }
+                      : { background: "#111118", color: "#3A3A4A", border: "1px solid #1E1E2A" }
+                    }
                   >
                     {label}
                   </button>
@@ -596,18 +606,18 @@ export default function WatchPage() {
 
             {/* Bug yes/no */}
             <div className="flex flex-col gap-2">
-              <span className="text-sm text-gray-300">{t.hadBugs}</span>
+              <span className="text-sm" style={{ color: "#6B6B7A" }}>{t.hadBugs}</span>
               <div className="flex gap-3">
                 {([true, false] as const).map((val) => (
                   <button
                     key={String(val)}
                     type="button"
                     onClick={() => setForm((f) => ({ ...f, hadBugs: val, bugDescription: val ? f.bugDescription : "" }))}
-                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
-                      form.hadBugs === val
-                        ? "bg-blue-600 text-white"
-                        : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                    }`}
+                    className="flex-1 py-2 rounded-lg text-sm font-medium transition"
+                    style={form.hadBugs === val
+                      ? { background: "#C9A84C", color: "#09090F" }
+                      : { background: "#111118", color: "#3A3A4A", border: "1px solid #1E1E2A" }
+                    }
                   >
                     {val ? t.yes : t.no}
                   </button>
@@ -619,34 +629,36 @@ export default function WatchPage() {
                   onChange={(e) => setForm((f) => ({ ...f, bugDescription: e.target.value }))}
                   placeholder={t.bugDescriptionPlaceholder}
                   rows={3}
-                  className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 resize-none focus:outline-none focus:border-blue-500"
+                  className="mt-1 w-full rounded-lg px-3 py-2 text-sm resize-none outline-none"
+                  style={{ background: "#111118", border: "1px solid #1E1E2A", color: "#F5F0E8" }}
                 />
               )}
             </div>
 
             {/* Optional comment */}
             <div className="flex flex-col gap-1.5">
-              <span className="text-sm text-gray-300">{t.comment}</span>
+              <span className="text-sm" style={{ color: "#6B6B7A" }}>{t.comment}</span>
               <textarea
                 value={form.comment}
                 onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))}
                 placeholder={t.commentPlaceholder}
                 rows={3}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 resize-none focus:outline-none focus:border-blue-500"
+                className="w-full rounded-lg px-3 py-2 text-sm resize-none outline-none"
+                style={{ background: "#111118", border: "1px solid #1E1E2A", color: "#F5F0E8" }}
               />
             </div>
           </div>
 
-          {/* Submit button */}
-          <div className="flex-shrink-0 px-5 py-4 border-t border-gray-800 bg-gray-950">
+          {/* Submit */}
+          <div className="flex-shrink-0 px-5 py-4" style={{ borderTop: "1px solid #1E1E2A", background: "#09090F" }}>
             <button
               onClick={submitFeedback}
               disabled={!canSubmit}
-              className={`w-full py-3 rounded-xl text-base font-semibold transition ${
-                canSubmit
-                  ? "bg-blue-600 text-white active:bg-blue-700"
-                  : "bg-gray-800 text-gray-500 cursor-not-allowed"
-              }`}
+              className="w-full py-3 rounded-xl text-base font-semibold transition"
+              style={canSubmit
+                ? { background: "#C9A84C", color: "#09090F" }
+                : { background: "#111118", color: "#3A3A4A", cursor: "not-allowed" }
+              }
             >
               {t.submit}
             </button>
@@ -657,25 +669,41 @@ export default function WatchPage() {
 
     // Idle — session ended landing
     return (
-      <div className="h-screen bg-gray-950 text-white flex flex-col items-center justify-center px-8 text-center gap-6">
-        <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center mb-2">
-          <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2M12 2a10 10 0 100 20A10 10 0 0012 2z" />
-          </svg>
+      <div className="h-screen flex flex-col items-center justify-center px-8 text-center gap-6" style={vsStyle}>
+        <div>
+          <div
+            style={{
+              fontFamily: "var(--font-cormorant), 'Cormorant Garamond', serif",
+              fontSize: "1.75rem",
+              fontWeight: 600,
+              color: "#C9A84C",
+              letterSpacing: "-0.02em",
+              marginBottom: "4px",
+            }}
+          >
+            Versespan
+          </div>
         </div>
         <div className="space-y-2">
-          <p className="text-2xl font-semibold">{t.sessionEnded}</p>
-          <p className="text-gray-400">{t.thankYouJoining}</p>
+          <p
+            className="text-2xl font-semibold"
+            style={{ fontFamily: "var(--font-cormorant), 'Cormorant Garamond', serif", color: "#F5F0E8" }}
+          >
+            {t.sessionEnded}
+          </p>
+          <p className="text-sm" style={{ color: "#3A3A4A" }}>{t.thankYouJoining}</p>
         </div>
         <button
           onClick={() => setFeedbackState("form")}
-          className="mt-2 px-8 py-3 bg-blue-600 text-white rounded-xl font-semibold text-base active:bg-blue-700 transition"
+          className="mt-2 px-8 py-3 rounded-xl font-semibold text-base transition active:scale-95"
+          style={{ background: "#C9A84C", color: "#09090F" }}
         >
           {t.shareFeedback}
         </button>
         <button
           onClick={() => setFeedbackState("submitted")}
-          className="text-sm text-gray-500 hover:text-gray-300 transition"
+          className="text-sm transition"
+          style={{ color: "#3A3A4A" }}
         >
           {t.skip}
         </button>
@@ -684,29 +712,103 @@ export default function WatchPage() {
   }
 
   return (
-    <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden" onClick={unlockAudio}>
-      {/* Audio unlock banner */}
+    <div
+      className="h-screen flex flex-col overflow-hidden"
+      style={{ background: "#09090F", color: "#F5F0E8", fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif" }}
+      onClick={unlockAudio}
+    >
+      {/* Join screen */}
       {!audioUnlocked && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-gray-950/90 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-4 px-8 text-center">
-            <span className="text-5xl">🔊</span>
-            <p className="text-xl font-semibold text-white">{t.tapToEnable}</p>
-            <p className="text-sm text-gray-400">{t.tapToEnableSub}</p>
+        <div
+          className="absolute inset-0 z-50 flex flex-col items-center justify-center px-8"
+          style={{ background: "#09090F" }}
+        >
+          <div className="flex flex-col items-center gap-8 text-center max-w-xs w-full">
+            {/* Wordmark */}
+            <div>
+              <div
+                style={{
+                  fontFamily: "var(--font-cormorant), 'Cormorant Garamond', serif",
+                  fontSize: "2.75rem",
+                  fontWeight: 600,
+                  color: "#C9A84C",
+                  letterSpacing: "-0.02em",
+                  lineHeight: 1,
+                }}
+              >
+                Versespan
+              </div>
+              <div
+                className="mt-2"
+                style={{
+                  color: "#3A3A4A",
+                  fontSize: "0.6rem",
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  fontWeight: 700,
+                  fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif",
+                }}
+              >
+                Live Translation
+              </div>
+            </div>
+
+            {/* Language badge */}
+            <div
+              style={{
+                background: "rgba(201,168,76,0.08)",
+                border: "1px solid rgba(201,168,76,0.2)",
+                borderRadius: "999px",
+                padding: "5px 18px",
+                fontSize: "0.7rem",
+                fontWeight: 700,
+                color: "#C9A84C",
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+                fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif",
+              }}
+            >
+              {targetLang === "es" ? "Español" : "English"}
+            </div>
+
+            {/* CTA */}
+            <div className="w-full flex flex-col gap-3">
+              <button
+                onClick={unlockAudio}
+                className="w-full py-4 rounded-xl font-semibold text-base transition-all active:scale-95"
+                style={{
+                  background: "#C9A84C",
+                  color: "#09090F",
+                  fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif",
+                }}
+              >
+                {t.tapToEnable}
+              </button>
+              <p
+                style={{
+                  color: "#3A3A4A",
+                  fontSize: "0.75rem",
+                  fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif",
+                }}
+              >
+                {t.tapToEnableSub}
+              </p>
+            </div>
           </div>
         </div>
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-800">
+      <div
+        className="flex items-center justify-between px-4 py-3 flex-shrink-0"
+        style={{ background: "#0D0D17", borderBottom: "1px solid #1E1E2A" }}
+      >
         <div className="flex items-center gap-2">
           <div
-            className={`w-2 h-2 rounded-full ${
-              status === "connected"
-                ? "bg-green-400"
-                : "bg-yellow-400 animate-pulse"
-            }`}
+            className={`w-2 h-2 rounded-full ${status !== "connected" ? "animate-pulse" : ""}`}
+            style={{ background: status === "connected" ? "#4ADE80" : "#FBBF24" }}
           />
-          <span className="text-sm text-gray-400">
+          <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#6B6B7A" }}>
             {status === "connected" ? t.live : status === "connecting" ? t.connecting : t.reconnecting}
           </span>
         </div>
@@ -717,9 +819,8 @@ export default function WatchPage() {
               <button
                 key={s}
                 onClick={() => setFontSize(s)}
-                className={`px-2 py-1 rounded text-xs font-bold transition ${
-                  fontSize === s ? "bg-gray-600 text-white" : "text-gray-500 hover:text-gray-300"
-                }`}
+                className="px-2 py-1 rounded text-xs font-bold transition"
+                style={{ color: fontSize === s ? "#C9A84C" : "#3A3A4A", background: fontSize === s ? "rgba(201,168,76,0.1)" : "transparent" }}
               >
                 {s === "md" ? "A" : "A"}
                 <sup>{s === "md" ? "" : s === "lg" ? "+" : "++"}</sup>
@@ -739,9 +840,11 @@ export default function WatchPage() {
                 return !v;
               });
             }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition ${
-              ttsEnabled ? "bg-blue-600 text-white" : "bg-gray-700 text-gray-400"
-            }`}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition"
+            style={ttsEnabled
+              ? { background: "rgba(201,168,76,0.1)", color: "#C9A84C", border: "1px solid rgba(201,168,76,0.25)" }
+              : { background: "rgba(58,58,74,0.3)", color: "#3A3A4A", border: "1px solid #1E1E2A" }
+            }
           >
             {ttsEnabled ? `🔊 ${t.audioOn}` : `🔇 ${t.audioOff}`}
           </button>
@@ -752,23 +855,29 @@ export default function WatchPage() {
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         {presenting?.content_type === "song" ? (
           <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-            <div className="flex items-center justify-between px-4 py-2 bg-gray-800/60 border-b border-gray-800 flex-shrink-0">
+            <div
+              className="flex items-center justify-between px-4 py-2 flex-shrink-0"
+              style={{ background: "#0D0D17", borderBottom: "1px solid #1E1E2A" }}
+            >
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-                <span className="text-xs font-semibold text-purple-400 uppercase tracking-widest">{t.nowPlaying}</span>
+                <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: "#C9A84C" }} />
+                <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#C9A84C" }}>{t.nowPlaying}</span>
               </div>
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-green-400 uppercase tracking-widest">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest" style={{ color: "#4ADE80" }}>
+                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#4ADE80" }} />
                 {t.live}
               </span>
             </div>
             <div className="flex-1 overflow-y-auto px-5 py-6">
               <div className="mb-6">
-                <p className={`${fontSizeClass} font-bold text-white`}>
+                <p
+                  className={fontSizeClass}
+                  style={{ fontFamily: "var(--font-cormorant), 'Cormorant Garamond', serif", fontWeight: 600, color: "#F5F0E8" }}
+                >
                   {presenting.song_titles[presenting.target_lang] || presenting.song_titles[presenting.source_lang] || Object.values(presenting.song_titles)[0] || ""}
                 </p>
                 {presenting.song_titles[presenting.source_lang] && presenting.song_titles[presenting.target_lang] && presenting.song_titles[presenting.source_lang] !== presenting.song_titles[presenting.target_lang] && (
-                  <p className="text-purple-300 text-sm mt-1">{presenting.song_titles[presenting.source_lang]}</p>
+                  <p className="text-sm mt-1" style={{ color: "#C9A84C" }}>{presenting.song_titles[presenting.source_lang]}</p>
                 )}
               </div>
               <div className="flex flex-wrap gap-4">
@@ -776,15 +885,15 @@ export default function WatchPage() {
                   .sort((a, b) => a.section_number - b.section_number)
                   .map((section) => (
                     <div key={section.section_number} className="min-w-[200px]">
-                      <p className="text-xs font-semibold text-purple-400 uppercase tracking-wide mb-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#6B6B7A" }}>
                         {section.section_name}
                       </p>
-                      <div className="bg-white/5 rounded-xl p-3">
-                        <p className={`${fontSizeClass} leading-relaxed text-white whitespace-pre-wrap`}>
+                      <div className="rounded-xl p-3" style={{ background: "#111118", border: "1px solid #1E1E2A" }}>
+                        <p className={`${fontSizeClass} leading-relaxed whitespace-pre-wrap`} style={{ color: "#F5F0E8" }}>
                           {section.texts[presenting.target_lang] || section.texts[presenting.source_lang] || Object.values(section.texts)[0] || ""}
                         </p>
                         {section.texts[presenting.target_lang] && section.texts[presenting.source_lang] && section.texts[presenting.target_lang] !== section.texts[presenting.source_lang] && (
-                          <p className={`${sourceSizeClass} text-purple-200 mt-2 italic whitespace-pre-wrap`}>
+                          <p className={`${sourceSizeClass} mt-2 italic whitespace-pre-wrap`} style={{ color: "#C9A84C" }}>
                             {section.texts[presenting.source_lang]}
                           </p>
                         )}
@@ -797,33 +906,39 @@ export default function WatchPage() {
         ) : (
           <>
             <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-              <div className="flex items-center gap-2 px-4 py-2 bg-gray-900 border-b border-gray-800">
-                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                <span className="text-xs font-semibold text-blue-400 uppercase tracking-widest">{t.liveTranslation}</span>
+              <div
+                className="flex items-center gap-2 px-4 py-2 flex-shrink-0"
+                style={{ background: "#0D0D17", borderBottom: "1px solid #1E1E2A" }}
+              >
+                <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: "#C9A84C" }} />
+                <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#C9A84C" }}>{t.liveTranslation}</span>
               </div>
 
               {lastText && (
-                <div className="px-5 py-4 bg-gray-900/60 border-b border-gray-800 border-l-4 border-l-blue-500 flex-shrink-0">
-                  <p className={`${fontSizeClass} font-semibold leading-snug text-white`}>{lastText}</p>
+                <div
+                  className="px-5 py-4 flex-shrink-0"
+                  style={{ background: "#111118", borderBottom: "1px solid #1E1E2A", borderLeft: "3px solid #C9A84C" }}
+                >
+                  <p className={`${fontSizeClass} font-semibold leading-snug`} style={{ color: "#F5F0E8" }}>{lastText}</p>
                 </div>
               )}
 
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
                 {status === "connecting" && translations.length === 0 && (
-                  <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-500">
-                    <div className="w-8 h-8 border-2 border-gray-600 border-t-blue-400 rounded-full animate-spin" />
-                    <p className="text-sm">{t.connectingStream}</p>
+                  <div className="flex flex-col items-center justify-center h-48 gap-3">
+                    <div className="w-8 h-8 border-2 rounded-full animate-spin" style={{ borderColor: "#1E1E2A", borderTopColor: "#C9A84C" }} />
+                    <p className="text-sm" style={{ color: "#3A3A4A" }}>{t.connectingStream}</p>
                   </div>
                 )}
 
                 {[...translations].reverse().map((tr) => (
                   <div key={tr.id} className="space-y-1">
-                    <span className="text-xs text-gray-600">
+                    <span className="text-xs" style={{ color: "#3A3A4A" }}>
                       {new Date(tr.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </span>
-                    <p className={`${fontSizeClass} leading-snug text-gray-100`}>{tr.target_text}</p>
+                    <p className={`${fontSizeClass} leading-snug`} style={{ color: "#F5F0E8" }}>{tr.target_text}</p>
                     {tr.source_text && (
-                      <p className={`${sourceSizeClass} text-gray-500 italic`}>{tr.source_text}</p>
+                      <p className={`${sourceSizeClass} italic`} style={{ color: "#3A3A4A" }}>{tr.source_text}</p>
                     )}
                   </div>
                 ))}
@@ -831,24 +946,35 @@ export default function WatchPage() {
             </div>
 
             {presenting && presenting.content_type === "scripture" && (
-              <div className="border-t border-gray-800 bg-gray-900 flex-shrink-0 max-h-[45vh] overflow-y-auto">
-                <div className="flex items-center justify-between px-4 py-2 bg-gray-800/60 border-b border-gray-800 sticky top-0">
+              <div
+                className="flex-shrink-0 max-h-[45vh] overflow-y-auto"
+                style={{ background: "#0D0D17", borderTop: "1px solid #1E1E2A" }}
+              >
+                <div
+                  className="flex items-center justify-between px-4 py-2 sticky top-0"
+                  style={{ background: "#0D0D17", borderBottom: "1px solid #1E1E2A" }}
+                >
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                    <span className="text-xs font-semibold text-amber-400 uppercase tracking-widest">{t.scripture}</span>
+                    <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: "#C9A84C" }} />
+                    <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#C9A84C" }}>{t.scripture}</span>
                   </div>
-                  <span className="flex items-center gap-1.5 text-xs font-semibold text-green-400 uppercase tracking-widest">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest" style={{ color: "#4ADE80" }}>
+                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#4ADE80" }} />
                     {t.live}
                   </span>
                 </div>
                 <div className="px-5 py-4 flex flex-col gap-3">
                   {presenting.verse_ref && (
-                    <p className="text-amber-400 text-sm font-semibold tracking-wide">{presenting.verse_ref}</p>
+                    <p className="text-sm font-semibold tracking-wide" style={{ color: "#C9A84C" }}>{presenting.verse_ref}</p>
                   )}
-                  <p className={`${fontSizeClass} text-white leading-relaxed`}>{presenting.target_text}</p>
+                  <p
+                    className={`${fontSizeClass} leading-relaxed`}
+                    style={{ fontFamily: "var(--font-cormorant), 'Cormorant Garamond', serif", color: "#F5F0E8" }}
+                  >
+                    {presenting.target_text}
+                  </p>
                   {presenting.source_text && presenting.source_text !== presenting.target_text && (
-                    <p className={`${sourceSizeClass} text-gray-500 italic`}>{presenting.source_text}</p>
+                    <p className={`${sourceSizeClass} italic`} style={{ color: "#3A3A4A" }}>{presenting.source_text}</p>
                   )}
                 </div>
               </div>

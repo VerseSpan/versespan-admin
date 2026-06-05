@@ -59,28 +59,51 @@ export default function SessionsPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Sessions</h1>
+      <div className="flex items-center justify-between">
+        <h1
+          style={{
+            fontFamily: "var(--font-cormorant), 'Cormorant Garamond', serif",
+            fontSize: "2rem",
+            fontWeight: 600,
+            color: "#F5F0E8",
+          }}
+        >
+          Sessions
+        </h1>
         <Link href="/sessions/new">
-          <button className="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700 transition font-semibold">
+          <button
+            className="px-5 py-2.5 rounded-lg text-sm font-semibold transition-all"
+            style={{ background: "#C9A84C", color: "#09090F" }}
+          >
             + New Session
           </button>
         </Link>
       </div>
       {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded text-red-800 text-sm">
+        <div
+          className="p-4 rounded-lg text-sm"
+          style={{ color: "#F87171", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)" }}
+        >
           <strong>Error:</strong> {error}
         </div>
       )}
-      <div className="bg-white rounded shadow divide-y">
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{ background: "#111118", border: "1px solid #1E1E2A" }}
+      >
         {isLoading ? (
-          <div className="px-4 py-6 text-gray-500 text-center">Loading sessions...</div>
+          <div className="px-5 py-8 text-center text-sm" style={{ color: "#3A3A4A" }}>
+            Loading sessions...
+          </div>
         ) : sessions.length > 0 ? (
           sessions.map((session) => (
             <Link
               key={session.id}
               href={`/sessions/${session.id}`}
-              className="block hover:bg-gray-50 transition"
+              className="block transition-colors"
+              style={{ borderBottom: "1px solid #1E1E2A" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.02)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; }}
             >
               <SessionRow
                 name={session.name}
@@ -91,7 +114,9 @@ export default function SessionsPage() {
             </Link>
           ))
         ) : (
-          <div className="px-4 py-6 text-gray-400 text-center">No sessions found.</div>
+          <div className="px-5 py-8 text-center text-sm" style={{ color: "#3A3A4A" }}>
+            No sessions found.
+          </div>
         )}
       </div>
     </div>
