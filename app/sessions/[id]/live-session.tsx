@@ -53,34 +53,6 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
     // Clear any previous errors when component mounts
     setError(null);
 
-    // Load historical translations from database
-    const loadHistoricalTranslations = async () => {
-      try {
-        console.log('[LiveSession] Loading historical translations from database...');
-        const historicalTranslations = await api.getSessionTranslations(sessionId);
-        console.log('[LiveSession] Found historical translations:', historicalTranslations);
-
-        if (Array.isArray(historicalTranslations)) {
-          const messages: TranslationMessage[] = historicalTranslations.map((translation: BackendTranslation) => ({
-            type: 'translation',
-            content_type: translation.content_type || 'speech',
-            source_text: translation.source_text,
-            target_text: translation.target_text,
-            confidence: translation.confidence,
-            timestamp: translation.timestamp || translation.created_at,
-          }));
-          // Replace (not append) so re-entering the session never duplicates history
-          setTranslations(sessionId, messages.reverse()); // newest first to match addTranslation order
-          console.log('[LiveSession] ✓ Loaded', messages.length, 'historical translations');
-        }
-      } catch (error: unknown) {
-        console.error('[LiveSession] Failed to load historical translations:', error);
-        // Don't show error to user for this, as it's not critical
-      }
-    };
-
-    loadHistoricalTranslations();
-
     // Initialize WebSocket client
     const client = new TranslationClient({
       sessionId,
@@ -133,22 +105,28 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
 
     clientRef.current = client;
 
-    // Verify session exists and connect to WebSocket
+    // Verify session + load history in parallel, then connect WebSocket
     const connectWithRetry = async () => {
       try {
-        console.log('[LiveSession] Verifying session exists in backend...');
+        const [, historicalTranslations] = await Promise.all([
+          api.getSession(sessionId),
+          api.getSessionTranslations(sessionId),
+        ]);
 
-        // First verify session exists in backend
-        const backendSession = await api.getSession(sessionId);
-        console.log('[LiveSession] ✓ Session verified in backend:', backendSession);
+        if (Array.isArray(historicalTranslations)) {
+          const messages: TranslationMessage[] = historicalTranslations.map((t: BackendTranslation) => ({
+            type: 'translation',
+            content_type: t.content_type || 'speech',
+            source_text: t.source_text,
+            target_text: t.target_text,
+            confidence: t.confidence,
+            timestamp: t.timestamp || t.created_at,
+          }));
+          setTranslations(sessionId, messages.reverse());
+        }
 
-        // Small delay to ensure DB commit is complete
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        // Now connect to WebSocket
-        console.log('[LiveSession] Connecting to WebSocket...');
         await client.connect();
-        console.log('[LiveSession] ✓ WebSocket connected successfully');
+        console.log('[LiveSession] ✓ Connected');
       } catch (error: unknown) {
         console.error('[LiveSession] Failed to connect:', error);
         setError(`Failed to connect: ${error instanceof Error ? error.message : String(error)}`);
@@ -164,18 +142,23 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
     };
   }, [sessionId]);
 
-  // Poll /health until all critical models are loaded, then stop
+  // Poll /health until all critical models are loaded — stops after 20 attempts (~60s)
   useEffect(() => {
     let stopped = false;
+    let retries = 0;
+    const MAX_RETRIES = 20;
     const poll = async () => {
+      if (stopped || retries >= MAX_RETRIES) {
+        if (retries >= MAX_RETRIES) setError("Service is taking too long to start. Please refresh.");
+        return;
+      }
+      retries++;
       try {
         const health = await api.getHealth();
         if (stopped) return;
         setModelStatus(health.models);
         setModelsReady(health.models_ready);
-        if (!health.models_ready) {
-          setTimeout(poll, 3000);
-        }
+        if (!health.models_ready) setTimeout(poll, 3000);
       } catch {
         if (!stopped) setTimeout(poll, 5000);
       }
