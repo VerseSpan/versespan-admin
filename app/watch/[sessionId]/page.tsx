@@ -188,11 +188,21 @@ export default function WatchPage() {
   // doesn't reset counters that were accumulated during the live session.
   const metricsKey = `versespan-metrics-${sessionId}`;
   const saveMetrics = useCallback(() => {
+    const lats = ttsLatenciesRef.current;
+    const avgTts = lats.length > 0
+      ? Math.round(lats.reduce((a, b) => a + b, 0) / lats.length)
+      : null;
+    const ts = wsMessageTimestampsRef.current;
+    const avgWs = ts.length > 1
+      ? Math.round(ts.slice(1).reduce((sum, t, i) => sum + (t - ts[i]), 0) / (ts.length - 1))
+      : null;
     localStorage.setItem(metricsKey, JSON.stringify({
       watchStartTime: watchStartTimeRef.current,
       connectionDrops: connectionDropsRef.current,
       totalTranslations: totalTranslationsRef.current,
       firstTranslationTime: firstTranslationTimeRef.current,
+      avgTtsLatencyMs: avgTts,
+      avgWsIntervalMs: avgWs,
     }));
   }, [metricsKey]);
 
@@ -240,8 +250,11 @@ export default function WatchPage() {
       ttsAbortRef.current = ctrl;
       try {
         const params = new URLSearchParams({ text: t, lang: sessionTargetLangRef.current, viewer_id: viewerIdRef.current, session_id: sessionId ?? "" });
+        const t0 = Date.now();
         const res = await fetch(`${apiUrl}/api/tts?${params}`, { signal: ctrl.signal });
         if (!res.ok || ctrl.signal.aborted) return null;
+        ttsLatenciesRef.current.push(Date.now() - t0);
+        saveMetrics();
         const ab = await res.arrayBuffer();
         if (ctrl.signal.aborted) return null;
         const ctx = audioCtxRef.current!;
@@ -289,7 +302,7 @@ export default function WatchPage() {
     } finally {
       ttsProcessingRef.current = false;
     }
-  }, [apiUrl]);
+  }, [apiUrl, saveMetrics]);
 
   const unlockAudio = useCallback(async () => {
     if (audioUnlockedRef.current) return;
@@ -520,22 +533,35 @@ export default function WatchPage() {
         )
       : null;
     const latencies = ttsLatenciesRef.current;
+    const avgTts = latencies.length > 0
+      ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
+      : null;
+
+    // Fall back to persisted averages if refs were reset by a page reload
+    let resolvedAvgTts = avgTts;
+    let resolvedAvgWs = avgInterval;
+    if (avgTts === null || avgInterval === null) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(metricsKey) || "{}");
+        if (avgTts === null && saved.avgTtsLatencyMs) resolvedAvgTts = saved.avgTtsLatencyMs;
+        if (avgInterval === null && saved.avgWsIntervalMs) resolvedAvgWs = saved.avgWsIntervalMs;
+      } catch {}
+    }
+
     return {
       user_agent: navigator.userAgent,
       watch_duration_seconds: Math.round((Date.now() - watchStartTimeRef.current) / 1000),
       tts_enabled: ttsEnabledRef.current,
       connection_drops: connectionDropsRef.current,
-      avg_tts_latency_ms: latencies.length > 0
-        ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
-        : null,
+      avg_tts_latency_ms: resolvedAvgTts,
       total_translations_received: totalTranslationsRef.current,
       session_duration_ms: firstTranslationTimeRef.current
         ? Date.now() - firstTranslationTimeRef.current
         : null,
       last_disconnect_reason: lastDisconnectCodeRef.current?.toString() ?? null,
-      avg_ws_message_interval_ms: avgInterval,
+      avg_ws_message_interval_ms: resolvedAvgWs,
     };
-  }, []);
+  }, [metricsKey]);
 
   const submitFeedback = useCallback(async () => {
     const payload = {
