@@ -27,7 +27,6 @@ export class TranslationClient {
   private config: TranslationClientConfig;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
-  private reconnectDelay = 3000;
   private pingInterval: NodeJS.Timeout | null = null;
   private intentionalDisconnect = false;
   private wasStreamingBeforeDisconnect = false;
@@ -114,7 +113,7 @@ export class TranslationClient {
           if (!this.intentionalDisconnect && this.reconnectAttempts < this.maxReconnectAttempts && event.code !== 1008) {
             this.reconnectAttempts++;
             console.log(`[TranslationClient] Reconnecting (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-            setTimeout(() => this.connect(), this.reconnectDelay);
+            setTimeout(() => this.connect(), 1000);
           } else {
             if (event.code === 1008) {
               this.config.onError?.('Session not found. Please create a new session.');
@@ -312,7 +311,7 @@ export class TranslationClient {
   private startPingInterval(): void {
     this.pingInterval = setInterval(() => {
       this.send({ type: 'ping' });
-    }, 30000); // Ping every 30 seconds
+    }, 20000); // Ping every 20 seconds
   }
 
   /**

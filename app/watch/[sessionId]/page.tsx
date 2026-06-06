@@ -460,7 +460,7 @@ export default function WatchPage() {
       ws.onclose = (event) => {
         if (dead || sessionEndedRef.current) return;
         lastDisconnectCodeRef.current = event.code;
-        const delay = event.code === 1000 ? 0 : 3000;
+        const delay = event.code === 1000 ? 0 : 1000;
         if (event.code !== 1000) connectionDropsRef.current += 1;
         console.warn(`[Watch] Disconnected — code: ${event.code}, reason: "${event.reason || "none"}", clean: ${event.wasClean}, drops: ${connectionDropsRef.current}, reconnecting in ${delay}ms`);
         setStatus("disconnected");
