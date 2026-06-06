@@ -177,13 +177,41 @@ export default function WatchPage() {
 
   // Metadata tracking refs
   const watchStartTimeRef = useRef(0);
-  useEffect(() => { watchStartTimeRef.current = Date.now(); }, []);
   const connectionDropsRef = useRef(0);
   const totalTranslationsRef = useRef(0);
   const ttsLatenciesRef = useRef<number[]>([]);
   const wsMessageTimestampsRef = useRef<number[]>([]);
   const firstTranslationTimeRef = useRef<number | null>(null);
   const lastDisconnectCodeRef = useRef<number | null>(null);
+
+  // Persist metrics to localStorage so a page refresh or history revisit
+  // doesn't reset counters that were accumulated during the live session.
+  const metricsKey = `versespan-metrics-${sessionId}`;
+  const saveMetrics = useCallback(() => {
+    localStorage.setItem(metricsKey, JSON.stringify({
+      watchStartTime: watchStartTimeRef.current,
+      connectionDrops: connectionDropsRef.current,
+      totalTranslations: totalTranslationsRef.current,
+      firstTranslationTime: firstTranslationTimeRef.current,
+    }));
+  }, [metricsKey]);
+
+  // On mount: restore persisted metrics or start fresh
+  useEffect(() => {
+    const saved = localStorage.getItem(metricsKey);
+    if (saved) {
+      try {
+        const m = JSON.parse(saved);
+        if (m.watchStartTime) watchStartTimeRef.current = m.watchStartTime;
+        if (m.connectionDrops) connectionDropsRef.current = m.connectionDrops;
+        if (m.totalTranslations) totalTranslationsRef.current = m.totalTranslations;
+        if (m.firstTranslationTime) firstTranslationTimeRef.current = m.firstTranslationTime;
+      } catch {}
+    } else {
+      watchStartTimeRef.current = Date.now();
+      saveMetrics();
+    }
+  }, [metricsKey, saveMetrics]);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -436,6 +464,7 @@ export default function WatchPage() {
             if (firstTranslationTimeRef.current === null) firstTranslationTimeRef.current = now;
             wsMessageTimestampsRef.current.push(now);
             if (wsMessageTimestampsRef.current.length > 200) wsMessageTimestampsRef.current.shift();
+            saveMetrics();
 
             if (!activeSongRef.current) {
               speak(entry.target_text);
@@ -461,7 +490,7 @@ export default function WatchPage() {
         if (dead || sessionEndedRef.current) return;
         lastDisconnectCodeRef.current = event.code;
         const delay = event.code === 1000 ? 0 : 1000;
-        if (event.code !== 1000) connectionDropsRef.current += 1;
+        if (event.code !== 1000) { connectionDropsRef.current += 1; saveMetrics(); }
         console.warn(`[Watch] Disconnected — code: ${event.code}, reason: "${event.reason || "none"}", clean: ${event.wasClean}, drops: ${connectionDropsRef.current}, reconnecting in ${delay}ms`);
         setStatus("disconnected");
         reconnectTimeout = setTimeout(connect, delay);
@@ -480,7 +509,7 @@ export default function WatchPage() {
       clearTimeout(reconnectTimeout);
       wsRef.current?.close();
     };
-  }, [sessionId, speak]);
+  }, [sessionId, speak, saveMetrics]);
 
   const buildMetadata = useCallback(() => {
     const timestamps = wsMessageTimestampsRef.current;
@@ -528,8 +557,9 @@ export default function WatchPage() {
         body: JSON.stringify(payload),
       });
     } catch {}
+    localStorage.removeItem(metricsKey);
     setFeedbackState("submitted");
-  }, [form, sessionId, apiUrl, buildMetadata]);
+  }, [form, sessionId, apiUrl, buildMetadata, metricsKey]);
 
   const fontSizeClass = { md: "text-xl", lg: "text-2xl", xl: "text-3xl" }[fontSize];
   const sourceSizeClass = { md: "text-sm", lg: "text-base", xl: "text-lg" }[fontSize];
