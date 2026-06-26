@@ -19,7 +19,7 @@ export function LayoutWithSidebar({ children }: { children: React.ReactNode }) {
     router.push("/login");
   }
 
-  if (pathname === "/login" || pathname.startsWith("/watch")) {
+  if (pathname === "/login" || pathname.startsWith("/watch") || pathname.startsWith("/join")) {
     return <>{children}</>;
   }
 

@@ -136,19 +136,37 @@ async function apiRequest<T = any>(
 	const res = await fetch(url, { ...options, headers });
 	if (!res.ok) {
 		if (res.status === 401 && requireAuth) {
-			// Token expired or invalid — clear and redirect to login
 			setToken("");
 			if (typeof window !== 'undefined') window.location.href = '/login';
 		}
-		let errorMsg = `API error: ${res.status}`;
-		try {
-			const err = await res.json();
-			errorMsg = err.detail || err.message || errorMsg;
-		} catch {}
-		throw new Error(errorMsg);
+		let body: Record<string, unknown> = {};
+		try { body = await res.json(); } catch {}
+		if (res.status === 409 && body.detail && typeof body.detail === 'object') {
+			throw new ApiConflictError(body.detail as Record<string, unknown>);
+		}
+		const errorMsg = (typeof body.detail === 'string' ? body.detail : null) || (body.message as string) || `API error: ${res.status}`;
+		throw new ApiError(res.status, errorMsg);
 	}
 	if (res.status === 204) return undefined as T; // No content
 	return res.json();
+}
+
+export class ApiError extends Error {
+	status: number;
+	constructor(status: number, message: string) {
+		super(message);
+		this.name = "ApiError";
+		this.status = status;
+	}
+}
+
+export class ApiConflictError extends Error {
+	detail: Record<string, unknown>;
+	constructor(detail: Record<string, unknown>) {
+		super((detail.message as string) || "Conflict");
+		this.name = "ApiConflictError";
+		this.detail = detail;
+	}
 }
 
 export { setToken, getToken, API_BASE_URL, apiRequest };
@@ -351,6 +369,29 @@ export const api = {
 			method: "PUT",
 			body: JSON.stringify(settings),
 		});
+	},
+
+	// Church slug (NFC/QR join URL)
+	async setChurchSlug(churchId: number, slug: string): Promise<{ id: number; name: string; slug: string }> {
+		return apiRequest(`/api/churches/${churchId}/slug`, {
+			method: "PATCH",
+			body: JSON.stringify({ slug }),
+		});
+	},
+
+	// Public — no auth required
+	async getActiveSessionBySlug(slug: string): Promise<{
+		session_id: string;
+		church_name: string;
+		source_lang: string;
+		target_lang: string;
+	} | null> {
+		try {
+			return await apiRequest(`/api/churches/join/${encodeURIComponent(slug)}/active-session`, { method: "GET" }, false);
+		} catch (err) {
+			if (err instanceof ApiError && err.status === 404) return null;
+			throw err;
+		}
 	},
 
 	// Languages

@@ -5,7 +5,7 @@ import { useStore, mapBackendSession, type BackendSession } from "@/lib/store";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AudioDeviceSelector } from "@/components/AudioDeviceSelector";
-import { api, getChurchId } from "@/lib/api";
+import { api, getChurchId, ApiConflictError } from "@/lib/api";
 import { getLangName } from "@/lib/languages";
 
 export default function NewSessionPage() {
@@ -18,6 +18,7 @@ export default function NewSessionPage() {
   const [targetLanguage, setTargetLanguage] = useState("en");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<{ session_id: string; session_name: string } | null>(null);
 
   useEffect(() => {
     api.getChurchLanguages(getChurchId()).then((langs) => {
@@ -55,14 +56,75 @@ export default function NewSessionPage() {
       // Navigate directly to the new session detail page
       router.push(`/sessions/${newSession.id}`);
     } catch (err) {
+      if (err instanceof ApiConflictError) {
+        setConflict({
+          session_id: err.detail.active_session_id as string,
+          session_name: (err.detail.active_session_name as string) || "Unnamed session",
+        });
+        setIsLoading(false);
+        return;
+      }
       console.error("Failed to create session:", err);
       setError(err instanceof Error ? err.message : "Failed to create session. Please try again.");
       setIsLoading(false);
     }
   }
 
+  async function handleEndAndCreate() {
+    if (!conflict) return;
+    setConflict(null);
+    setIsLoading(true);
+    setError(null);
+    try {
+      await api.stopSession(conflict.session_id);
+      const backendSession = await api.createSession({
+        name: name.trim(),
+        church_id: getChurchId(),
+        source_language: sourceLanguage,
+        target_language: targetLanguage,
+      }) as BackendSession;
+      const newSession = mapBackendSession(backendSession, deviceId);
+      localStorage.setItem(`session_${newSession.id}_deviceId`, deviceId);
+      addSession(newSession);
+      router.push(`/sessions/${newSession.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create session.");
+      setIsLoading(false);
+    }
+  }
+
   return (
     <div className="max-w-xl mx-auto">
+      {conflict && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h2 className="text-lg font-bold text-gray-900 mb-2">Session already active</h2>
+            <p className="text-gray-700 text-sm mb-5">
+              <strong>{conflict.session_name}</strong> is currently active. You must end it before starting a new one.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConflict(null)}
+                className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => router.push(`/sessions/${conflict.session_id}`)}
+                className="px-4 py-2 rounded bg-blue-100 hover:bg-blue-200 text-blue-800 text-sm font-semibold"
+              >
+                Go to active session
+              </button>
+              <button
+                onClick={handleEndAndCreate}
+                className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-semibold"
+              >
+                End it &amp; start new
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <h1 className="text-2xl font-bold mb-6">Create New Session</h1>
       <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded text-sm text-blue-900">
         <strong>Audio Setup Instructions:</strong>

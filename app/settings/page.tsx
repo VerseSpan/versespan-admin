@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { QRCodeSVG } from "qrcode.react";
 import { api, getChurchId } from "@/lib/api";
 import { SUPPORTED_LANGUAGES, getLangName } from "@/lib/languages";
 
@@ -44,6 +45,15 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [slug, setSlug] = useState("");
+  const [slugSaving, setSlugSaving] = useState(false);
+  const [slugSaved, setSlugSaved] = useState(false);
+  const [slugError, setSlugError] = useState<string | null>(null);
+
+  const [origin] = useState(() =>
+    typeof window !== "undefined" ? window.location.origin : ""
+  );
+
   useEffect(() => {
     const churchId = getChurchId();
     api.getChurch(churchId)
@@ -55,9 +65,28 @@ export default function SettingsPage() {
         });
         const settings = (c.settings as Record<string, unknown>) || {};
         setChurchLanguages((settings.languages as string[]) || ["es", "en"]);
+        if (c.slug) setSlug(c.slug as string);
       })
       .catch(() => {}); // silently fail — form has sensible defaults
   }, []);
+
+  async function handleSlugSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSlugSaving(true);
+    setSlugError(null);
+    setSlugSaved(false);
+    try {
+      await api.setChurchSlug(getChurchId(), slug.trim());
+      setSlugSaved(true);
+      setTimeout(() => setSlugSaved(false), 3000);
+    } catch (err: unknown) {
+      setSlugError((err as Error).message || "Failed to save slug");
+    } finally {
+      setSlugSaving(false);
+    }
+  }
+
+  const joinUrl = slug ? `${origin}/join/${slug}` : "";
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     const { name, value } = e.target;
@@ -166,6 +195,63 @@ export default function SettingsPage() {
           </button>
         </div>
       </form>
+
+      {/* NFC / QR Join URL */}
+      <div className="bg-white rounded shadow p-8 mt-6">
+        <h2 className="text-lg font-bold text-gray-900 mb-1">NFC &amp; QR Join URL</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Set a short slug to create a static URL for NFC cards and printed QR codes.
+          Tapping or scanning will redirect to the active session automatically.
+        </p>
+        <form onSubmit={handleSlugSubmit} className="space-y-4">
+          <div className="flex gap-3 items-end">
+            <div className="flex-1">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Church slug</label>
+              <div className="flex items-center border rounded overflow-hidden focus-within:ring focus-within:border-blue-400">
+                <span className="px-3 py-2 bg-gray-50 text-gray-400 text-sm border-r select-none">
+                  {origin}/join/
+                </span>
+                <input
+                  className="flex-1 px-3 py-2 text-gray-900 text-sm focus:outline-none"
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value.toLowerCase())}
+                  placeholder="sccpasadena"
+                  pattern="^[a-z0-9][a-z0-9\-]{1,98}[a-z0-9]$"
+                  title="Lowercase letters, numbers, and hyphens only. Cannot start or end with a hyphen."
+                  disabled={slugSaving}
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={slugSaving || !slug.trim()}
+              className="px-5 py-2 rounded bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 shrink-0"
+            >
+              {slugSaving ? "Saving..." : "Save"}
+            </button>
+          </div>
+          {slugError && <p className="text-red-600 text-sm">{slugError}</p>}
+          {slugSaved && <p className="text-green-600 text-sm font-medium">Slug saved</p>}
+        </form>
+
+        {joinUrl && (
+          <div className="mt-6 flex flex-col sm:flex-row gap-6 items-start">
+            <div className="bg-white border rounded-xl p-3 shadow-sm">
+              <QRCodeSVG value={joinUrl} size={140} level="M" />
+            </div>
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Static join URL</p>
+              <p className="text-sm text-gray-800 break-all font-mono bg-gray-50 border rounded px-3 py-2 mb-3">
+                {joinUrl}
+              </p>
+              <p className="text-xs text-gray-500">
+                Program NFC cards with this URL using the <strong>NFC Tools</strong> app.
+                It never changes — tap or scan always redirects to the currently active session.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ProPresenter Integration — only shown when feature is enabled */}
       {ppStatus?.feature_enabled && (
