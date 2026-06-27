@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { QRCodeSVG } from "qrcode.react";
+import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
 import { api, getChurchId } from "@/lib/api";
 import { SUPPORTED_LANGUAGES, getLangName } from "@/lib/languages";
 
@@ -87,6 +87,62 @@ export default function SettingsPage() {
   }
 
   const joinUrl = slug ? `${origin}/join/${slug}` : "";
+  const qrDownloadRef = useRef<HTMLDivElement>(null);
+
+  function downloadPNG() {
+    const qrCanvas = qrDownloadRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
+    if (!qrCanvas || !joinUrl) return;
+
+    const W = 1920, H = 1080;
+    const out = document.createElement("canvas");
+    out.width = W; out.height = H;
+    const ctx = out.getContext("2d")!;
+
+    ctx.fillStyle = "#07070f";
+    ctx.fillRect(0, 0, W, H);
+
+    const glow = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, 600);
+    glow.addColorStop(0, "rgba(99,60,180,0.28)");
+    glow.addColorStop(0.5, "rgba(79,40,160,0.10)");
+    glow.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+
+    const qrSize = 340, pad = 28, cardSize = qrSize + pad * 2;
+    const cardX = (W - cardSize) / 2, cardY = H / 2 - cardSize / 2 - 64, r = 20;
+    ctx.shadowColor = "rgba(120,80,255,0.45)"; ctx.shadowBlur = 60;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(cardX + r, cardY); ctx.lineTo(cardX + cardSize - r, cardY);
+    ctx.arcTo(cardX + cardSize, cardY, cardX + cardSize, cardY + r, r);
+    ctx.lineTo(cardX + cardSize, cardY + cardSize - r);
+    ctx.arcTo(cardX + cardSize, cardY + cardSize, cardX + cardSize - r, cardY + cardSize, r);
+    ctx.lineTo(cardX + r, cardY + cardSize);
+    ctx.arcTo(cardX, cardY + cardSize, cardX, cardY + cardSize - r, r);
+    ctx.lineTo(cardX, cardY + r);
+    ctx.arcTo(cardX, cardY, cardX + r, cardY, r);
+    ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.drawImage(qrCanvas, cardX + pad, cardY + pad, qrSize, qrSize);
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 68px system-ui, -apple-system, sans-serif";
+    ctx.fillText("Join Live Translation", W / 2, cardY + cardSize + 80);
+    ctx.fillStyle = "#6b7280";
+    ctx.font = "30px system-ui, -apple-system, sans-serif";
+    ctx.fillText("Scan with your phone camera to follow along", W / 2, cardY + cardSize + 130);
+    ctx.fillStyle = "#7c5cfc";
+    ctx.font = "bold 22px system-ui, sans-serif";
+    ctx.fillText("VERSESPAN", W / 2, 56);
+    ctx.fillStyle = "#374151";
+    ctx.font = "18px monospace";
+    ctx.fillText(joinUrl, W / 2, H - 36);
+
+    const link = document.createElement("a");
+    link.download = `versespan-join-qr.png`;
+    link.href = out.toDataURL("image/png");
+    link.click();
+  }
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     const { name, value } = e.target;
@@ -235,20 +291,55 @@ export default function SettingsPage() {
         </form>
 
         {joinUrl && (
-          <div className="mt-6 flex flex-col sm:flex-row gap-6 items-start">
-            <div className="bg-white border rounded-xl p-3 shadow-sm">
-              <QRCodeSVG value={joinUrl} size={140} level="M" />
+          <div className="mt-6">
+            {/* Hidden canvas used for PNG export */}
+            <div ref={qrDownloadRef} className="hidden" aria-hidden>
+              <QRCodeCanvas value={joinUrl} size={340} level="M" />
             </div>
-            <div className="flex-1">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Static join URL</p>
-              <p className="text-sm text-gray-800 break-all font-mono bg-gray-50 border rounded px-3 py-2 mb-3">
-                {joinUrl}
-              </p>
-              <p className="text-xs text-gray-500">
-                Program NFC cards with this URL using the <strong>NFC Tools</strong> app.
-                It never changes — tap or scan always redirects to the currently active session.
-              </p>
+
+            <div className="flex flex-col sm:flex-row gap-6 items-start">
+              <div className="bg-white border rounded-xl p-3 shadow-sm shrink-0">
+                <QRCodeSVG value={joinUrl} size={140} level="M" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Static join URL</p>
+                <p className="text-sm text-gray-800 break-all font-mono bg-gray-50 border rounded px-3 py-2 mb-3">
+                  {joinUrl}
+                </p>
+                <p className="text-xs text-gray-500 mb-4">
+                  Program NFC cards with this URL using the <strong>NFC Tools</strong> app.
+                  It never changes — tap or scan always redirects to the currently active session.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={downloadPNG}
+                    className="px-4 py-2 rounded bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
+                  >
+                    Download PNG (1920×1080)
+                  </button>
+                  <button
+                    onClick={() => window.print()}
+                    className="px-4 py-2 rounded border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition"
+                  >
+                    Save as PDF
+                  </button>
+                </div>
+              </div>
             </div>
+
+            {/* Print styles — renders the poster fullscreen when printing */}
+            <style>{`
+              @media print {
+                body > * { display: none !important; }
+                body::after {
+                  content: '';
+                  display: block;
+                  position: fixed;
+                  inset: 0;
+                  background: #07070f;
+                }
+              }
+            `}</style>
           </div>
         )}
       </div>

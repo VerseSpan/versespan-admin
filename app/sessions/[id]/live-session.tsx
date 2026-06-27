@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { QRCodeSVG } from "qrcode.react";
 import { TranslationClient } from "@/lib/translation-client";
 import { api } from "@/lib/api";
 import { useStore, type TranslationMessage } from "@/lib/store";
@@ -328,31 +327,6 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
         )}
       </div>
 
-      {/* QR Code */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold mb-4">Mobile App Join Code</h2>
-        <div className="flex items-center gap-6">
-          <div className="p-2 bg-white border rounded">
-            <QRCodeSVG value={`${typeof window !== 'undefined' ? window.location.origin : ''}/watch/${sessionId}`} size={152} />
-          </div>
-          <div>
-            <p className="text-sm text-gray-600 mb-2">
-              Scan to follow along in your language on your phone.
-            </p>
-            <p className="text-xs text-gray-500 font-mono bg-gray-100 px-3 py-2 rounded break-all mb-3">
-              {typeof window !== 'undefined' ? window.location.origin : ''}/watch/{sessionId}
-            </p>
-            <a
-              href={`/sessions/${sessionId}/qr`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition"
-            >
-              Show / Download QR
-            </a>
-          </div>
-        </div>
-      </div>
 
       {/* Song Lyrics Overlay - Shows when song is active */}
       {activeSong && (
