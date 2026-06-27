@@ -89,10 +89,16 @@ export default function SettingsPage() {
   const joinUrl = slug ? `${origin}/join/${slug}` : "";
   const qrDownloadRef = useRef<HTMLDivElement>(null);
 
-  function downloadPNG() {
+  const POSTER_TEXT: Record<string, { headline: string; subtitle: string }> = {
+    en: { headline: "Join Live Translation", subtitle: "Scan with your phone camera to follow along" },
+    es: { headline: "Únete a la Traducción en Vivo", subtitle: "Escanea con tu cámara para seguir la sesión" },
+  };
+
+  function downloadPNG(lang: "en" | "es") {
     const qrCanvas = qrDownloadRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
     if (!qrCanvas || !joinUrl) return;
 
+    const { headline, subtitle } = POSTER_TEXT[lang];
     const W = 1920, H = 1080;
     const out = document.createElement("canvas");
     out.width = W; out.height = H;
@@ -127,10 +133,10 @@ export default function SettingsPage() {
     ctx.textAlign = "center";
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 68px system-ui, -apple-system, sans-serif";
-    ctx.fillText("Join Live Translation", W / 2, cardY + cardSize + 80);
+    ctx.fillText(headline, W / 2, cardY + cardSize + 80);
     ctx.fillStyle = "#6b7280";
     ctx.font = "30px system-ui, -apple-system, sans-serif";
-    ctx.fillText("Scan with your phone camera to follow along", W / 2, cardY + cardSize + 130);
+    ctx.fillText(subtitle, W / 2, cardY + cardSize + 130);
     ctx.fillStyle = "#7c5cfc";
     ctx.font = "bold 22px system-ui, sans-serif";
     ctx.fillText("VERSESPAN", W / 2, 56);
@@ -139,7 +145,7 @@ export default function SettingsPage() {
     ctx.fillText(joinUrl, W / 2, H - 36);
 
     const link = document.createElement("a");
-    link.download = `versespan-join-qr.png`;
+    link.download = `versespan-join-qr-${lang}.png`;
     link.href = out.toDataURL("image/png");
     link.click();
   }
@@ -310,12 +316,18 @@ export default function SettingsPage() {
                   Program NFC cards with this URL using the <strong>NFC Tools</strong> app.
                   It never changes — tap or scan always redirects to the currently active session.
                 </p>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={downloadPNG}
+                    onClick={() => downloadPNG("en")}
                     className="px-4 py-2 rounded bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
                   >
-                    Download PNG (1920×1080)
+                    Download PNG — English
+                  </button>
+                  <button
+                    onClick={() => downloadPNG("es")}
+                    className="px-4 py-2 rounded bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
+                  >
+                    Download PNG — Español
                   </button>
                   <button
                     onClick={() => window.print()}
