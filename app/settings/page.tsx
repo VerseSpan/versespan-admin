@@ -22,9 +22,25 @@ export default function SettingsPage() {
   const [ppCodeCopied, setPpCodeCopied] = useState(false);
 
   useEffect(() => {
-    api.proPresenterStatus()
-      .then((s) => setPpStatus(s as PPStatus))
-      .catch(() => {});
+    const churchId = getChurchId();
+    Promise.allSettled([
+      api.proPresenterStatus(),
+      api.getChurch(churchId),
+    ]).then(([ppResult, churchResult]) => {
+      if (ppResult.status === "fulfilled") {
+        setPpStatus(ppResult.value as PPStatus);
+      }
+      if (churchResult.status === "fulfilled") {
+        const c = churchResult.value as Record<string, unknown>;
+        setForm({
+          bible_version_source: (c.bible_version_source as string) || "RV1960",
+          bible_version_target: (c.bible_version_target as string) || "KJV",
+        });
+        const settings = (c.settings as Record<string, unknown>) || {};
+        setChurchLanguages((settings.languages as string[]) || ["es", "en"]);
+        if (c.slug) setSlug(c.slug as string);
+      }
+    });
   }, []);
 
   async function savePpSettings(e: React.FormEvent) {
@@ -53,22 +69,6 @@ export default function SettingsPage() {
   const [origin] = useState(() =>
     typeof window !== "undefined" ? window.location.origin : ""
   );
-
-  useEffect(() => {
-    const churchId = getChurchId();
-    api.getChurch(churchId)
-      .then((church) => {
-        const c = church as Record<string, unknown>;
-        setForm({
-          bible_version_source: (c.bible_version_source as string) || "RV1960",
-          bible_version_target: (c.bible_version_target as string) || "KJV",
-        });
-        const settings = (c.settings as Record<string, unknown>) || {};
-        setChurchLanguages((settings.languages as string[]) || ["es", "en"]);
-        if (c.slug) setSlug(c.slug as string);
-      })
-      .catch(() => {}); // silently fail — form has sensible defaults
-  }, []);
 
   async function handleSlugSubmit(e: React.FormEvent) {
     e.preventDefault();

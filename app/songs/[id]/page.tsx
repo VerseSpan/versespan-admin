@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { api, getChurchId } from "@/lib/api";
@@ -20,6 +20,140 @@ interface Song {
   sections: SongSection[];
 }
 
+interface SectionCardProps {
+  section: SongSection;
+  index: number;
+  totalSections: number;
+  isEditing: boolean;
+  churchLanguages: string[];
+  langGridStyle: React.CSSProperties;
+  editedName: string;
+  editedTexts: Record<string, string>;
+  isSavingSection: boolean;
+  onEdit: (section: SongSection) => void;
+  onDelete: (sectionId: string) => void;
+  onReorder: (sectionId: string, direction: "up" | "down") => void;
+  onSave: () => void;
+  onCancel: () => void;
+  onNameChange: React.Dispatch<React.SetStateAction<string>>;
+  onTextsChange: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+}
+
+const SectionCard = React.memo(function SectionCard({
+  section,
+  index,
+  totalSections,
+  isEditing,
+  churchLanguages,
+  langGridStyle,
+  editedName,
+  editedTexts,
+  isSavingSection,
+  onEdit,
+  onDelete,
+  onReorder,
+  onSave,
+  onCancel,
+  onNameChange,
+  onTextsChange,
+}: SectionCardProps) {
+  return (
+    <div className="px-6 py-4 hover:bg-gray-50">
+      {isEditing ? (
+        <div>
+          <div className="mb-3">
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Section Name</label>
+            <input
+              type="text"
+              value={editedName}
+              onChange={(e) => onNameChange(e.target.value)}
+              className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+            />
+          </div>
+          <div className="grid gap-4 mb-3" style={langGridStyle}>
+            {churchLanguages.map(lang => (
+              <div key={lang}>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  {getLangName(lang)} Lyrics
+                </label>
+                <textarea
+                  value={editedTexts[lang] || ""}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    onTextsChange(prev => ({ ...prev, [lang]: val }));
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 font-mono text-sm"
+                  rows={4}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={onSave}
+              disabled={isSavingSection}
+              className="text-green-600 hover:text-green-800 font-semibold text-sm disabled:opacity-50"
+            >
+              {isSavingSection ? "Saving..." : "Save"}
+            </button>
+            <button onClick={onCancel} className="text-gray-600 hover:text-gray-800 text-sm">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs font-semibold text-gray-500 uppercase">
+              {section.section_name}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onReorder(section.id, "up")}
+                disabled={index === 0}
+                className="text-gray-600 hover:text-gray-800 disabled:opacity-30 disabled:cursor-not-allowed p-1"
+                title="Move up"
+              >
+                ↑
+              </button>
+              <button
+                onClick={() => onReorder(section.id, "down")}
+                disabled={index === totalSections - 1}
+                className="text-gray-600 hover:text-gray-800 disabled:opacity-30 disabled:cursor-not-allowed p-1"
+                title="Move down"
+              >
+                ↓
+              </button>
+              <button
+                onClick={() => onEdit(section)}
+                className="text-blue-600 hover:text-blue-800 font-semibold text-sm ml-2"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => onDelete(section.id)}
+                className="text-red-600 hover:text-red-800 font-semibold text-sm"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+          <div className="grid gap-4" style={langGridStyle}>
+            {churchLanguages.map(lang => (
+              <div key={lang}>
+                <div className="text-xs text-gray-500 mb-1">{getLangName(lang)}</div>
+                <div className="text-sm text-gray-900 whitespace-pre-wrap font-mono bg-gray-50 p-2 rounded min-h-[2rem]">
+                  {section.texts[lang] || <span className="text-gray-400 italic">No text</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
 export default function SongDetailPage() {
   const params = useParams<{ id: string }>();
   const [song, setSong] = useState<Song | null>(null);
@@ -29,19 +163,17 @@ export default function SongDetailPage() {
   const [isSavingSection, setIsSavingSection] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Edit states
   const [editedTitles, setEditedTitles] = useState<Record<string, string>>({});
   const [editedIsActive, setEditedIsActive] = useState(true);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editedSectionName, setEditedSectionName] = useState("");
   const [editedSectionTexts, setEditedSectionTexts] = useState<Record<string, string>>({});
 
-  // New section state
   const [showNewSection, setShowNewSection] = useState(false);
   const [newSectionName, setNewSectionName] = useState("");
   const [newSectionTexts, setNewSectionTexts] = useState<Record<string, string>>({});
 
-  const loadSong = async () => {
+  const loadSong = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
@@ -55,7 +187,7 @@ export default function SongDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [params.id]);
 
   useEffect(() => {
     loadSong();
@@ -77,13 +209,13 @@ export default function SongDetailPage() {
     }
   };
 
-  const handleEditSection = (section: SongSection) => {
+  const handleEditSection = useCallback((section: SongSection) => {
     setEditingSectionId(section.id);
     setEditedSectionName(section.section_name);
     setEditedSectionTexts(section.texts || {});
-  };
+  }, []);
 
-  const handleSaveSection = async () => {
+  const handleSaveSection = useCallback(async () => {
     if (!editingSectionId || isSavingSection) return;
     try {
       setIsSavingSection(true);
@@ -100,15 +232,15 @@ export default function SongDetailPage() {
     } finally {
       setIsSavingSection(false);
     }
-  };
+  }, [editingSectionId, isSavingSection, params.id, editedSectionName, editedSectionTexts, loadSong]);
 
-  const handleCancelEdit = () => {
+  const handleCancelEdit = useCallback(() => {
     setEditingSectionId(null);
     setEditedSectionName("");
     setEditedSectionTexts({});
-  };
+  }, []);
 
-  const handleDeleteSection = async (sectionId: string) => {
+  const handleDeleteSection = useCallback(async (sectionId: string) => {
     if (!confirm("Are you sure you want to delete this section?")) return;
     try {
       setError(null);
@@ -118,7 +250,26 @@ export default function SongDetailPage() {
       console.error("Failed to delete section:", err);
       setError(err instanceof Error ? err.message : "Failed to delete section");
     }
-  };
+  }, [params.id, loadSong]);
+
+  const handleReorderSection = useCallback(async (sectionId: string, direction: "up" | "down") => {
+    if (!song) return;
+    const currentSection = song.sections.find((s: SongSection) => s.id === sectionId);
+    if (!currentSection) return;
+    const currentIndex = song.sections.findIndex((s: SongSection) => s.id === sectionId);
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= song.sections.length) return;
+    const targetSection = song.sections[targetIndex];
+    try {
+      setError(null);
+      await api.updateSongSection(params.id, currentSection.id, { section_number: targetSection.section_number });
+      await api.updateSongSection(params.id, targetSection.id, { section_number: currentSection.section_number });
+      await loadSong();
+    } catch (err) {
+      console.error("Failed to reorder sections:", err);
+      setError(err instanceof Error ? err.message : "Failed to reorder sections");
+    }
+  }, [song, params.id, loadSong]);
 
   const handleAddNewSection = async () => {
     const hasText = Object.values(newSectionTexts).some(t => t.trim());
@@ -146,26 +297,10 @@ export default function SongDetailPage() {
     }
   };
 
-  const handleReorderSection = async (sectionId: string, direction: "up" | "down") => {
-    if (!song) return;
-    const currentSection = song.sections.find((s: SongSection) => s.id === sectionId);
-    if (!currentSection) return;
-    const currentIndex = song.sections.findIndex((s: SongSection) => s.id === sectionId);
-    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= song.sections.length) return;
-    const targetSection = song.sections[targetIndex];
-    try {
-      setError(null);
-      await api.updateSongSection(params.id, currentSection.id, { section_number: targetSection.section_number });
-      await api.updateSongSection(params.id, targetSection.id, { section_number: currentSection.section_number });
-      await loadSong();
-    } catch (err) {
-      console.error("Failed to reorder sections:", err);
-      setError(err instanceof Error ? err.message : "Failed to reorder sections");
-    }
-  };
-
-  const langGridStyle = { gridTemplateColumns: `repeat(${churchLanguages.length}, 1fr)` };
+  const langGridStyle = useMemo(
+    () => ({ gridTemplateColumns: `repeat(${churchLanguages.length}, 1fr)` }),
+    [churchLanguages.length]
+  );
 
   if (isLoading) {
     return (
@@ -317,101 +452,30 @@ export default function SongDetailPage() {
           ) : (
             song.sections
               .sort((a: SongSection, b: SongSection) => a.section_number - b.section_number)
-              .map((section: SongSection, index: number) => (
-                <div key={section.id} className="px-6 py-4 hover:bg-gray-50">
-                  {editingSectionId === section.id ? (
-                    <div>
-                      <div className="mb-3">
-                        <label className="block text-xs font-semibold text-gray-700 mb-1">Section Name</label>
-                        <input
-                          type="text"
-                          value={editedSectionName}
-                          onChange={(e) => setEditedSectionName(e.target.value)}
-                          className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
-                        />
-                      </div>
-                      <div className="grid gap-4 mb-3" style={langGridStyle}>
-                        {churchLanguages.map(lang => (
-                          <div key={lang}>
-                            <label className="block text-xs font-semibold text-gray-700 mb-1">
-                              {getLangName(lang)} Lyrics
-                            </label>
-                            <textarea
-                              value={editedSectionTexts[lang] || ""}
-                              onChange={(e) => setEditedSectionTexts(prev => ({ ...prev, [lang]: e.target.value }))}
-                              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 font-mono text-sm"
-                              rows={4}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleSaveSection}
-                          disabled={isSavingSection}
-                          className="text-green-600 hover:text-green-800 font-semibold text-sm disabled:opacity-50"
-                        >
-                          {isSavingSection ? "Saving..." : "Save"}
-                        </button>
-                        <button
-                          onClick={handleCancelEdit}
-                          className="text-gray-600 hover:text-gray-800 text-sm"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="text-xs font-semibold text-gray-500 uppercase">
-                          {section.section_name}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handleReorderSection(section.id, "up")}
-                            disabled={index === 0}
-                            className="text-gray-600 hover:text-gray-800 disabled:opacity-30 disabled:cursor-not-allowed p-1"
-                            title="Move up"
-                          >
-                            ↑
-                          </button>
-                          <button
-                            onClick={() => handleReorderSection(section.id, "down")}
-                            disabled={index === song.sections.length - 1}
-                            className="text-gray-600 hover:text-gray-800 disabled:opacity-30 disabled:cursor-not-allowed p-1"
-                            title="Move down"
-                          >
-                            ↓
-                          </button>
-                          <button
-                            onClick={() => handleEditSection(section)}
-                            className="text-blue-600 hover:text-blue-800 font-semibold text-sm ml-2"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeleteSection(section.id)}
-                            className="text-red-600 hover:text-red-800 font-semibold text-sm"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                      <div className="grid gap-4" style={langGridStyle}>
-                        {churchLanguages.map(lang => (
-                          <div key={lang}>
-                            <div className="text-xs text-gray-500 mb-1">{getLangName(lang)}</div>
-                            <div className="text-sm text-gray-900 whitespace-pre-wrap font-mono bg-gray-50 p-2 rounded min-h-[2rem]">
-                              {section.texts[lang] || <span className="text-gray-400 italic">No text</span>}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))
+              .map((section: SongSection, index: number) => {
+                const isEditing = editingSectionId === section.id;
+                return (
+                  <SectionCard
+                    key={section.id}
+                    section={section}
+                    index={index}
+                    totalSections={song.sections.length}
+                    isEditing={isEditing}
+                    churchLanguages={churchLanguages}
+                    langGridStyle={langGridStyle}
+                    editedName={isEditing ? editedSectionName : ""}
+                    editedTexts={isEditing ? editedSectionTexts : {}}
+                    isSavingSection={isEditing ? isSavingSection : false}
+                    onEdit={handleEditSection}
+                    onDelete={handleDeleteSection}
+                    onReorder={handleReorderSection}
+                    onSave={handleSaveSection}
+                    onCancel={handleCancelEdit}
+                    onNameChange={setEditedSectionName}
+                    onTextsChange={setEditedSectionTexts}
+                  />
+                );
+              })
           )}
         </div>
       </div>

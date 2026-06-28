@@ -88,10 +88,8 @@ export function LayoutWithSidebar({ children }: { children: React.ReactNode }) {
 
         <button
           onClick={handleLogout}
-          className="px-3 py-2.5 rounded-lg text-sm text-left transition-colors"
-          style={{ color: "#3A3A4A", fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif" }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#6B6B7A"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#3A3A4A"; }}
+          className="px-3 py-2.5 rounded-lg text-sm text-left transition-colors text-[#3A3A4A] hover:text-[#6B6B7A]"
+          style={{ fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif" }}
         >
           Sign out
         </button>
