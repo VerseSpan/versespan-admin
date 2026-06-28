@@ -88,6 +88,7 @@ export function LayoutWithSidebar({ children }: { children: React.ReactNode }) {
 
         <button
           onClick={handleLogout}
+          aria-label="Sign out"
           className="px-3 py-2.5 rounded-lg text-sm text-left transition-colors text-[#3A3A4A] hover:text-[#6B6B7A]"
           style={{ fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif" }}
         >

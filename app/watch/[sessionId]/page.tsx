@@ -170,7 +170,6 @@ export default function WatchPage() {
   const ttsAbortRef = useRef<AbortController | null>(null);
   const ttsQueueRef = useRef<string[]>([]);
   const ttsProcessingRef = useRef(false);
-  const lastTextRef = useRef("");
   const activeSongRef = useRef<ActiveSong | null>(null);
   const sessionEndedRef = useRef(false);
   const idCounter = useRef(0);
@@ -312,10 +311,10 @@ export default function WatchPage() {
       if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
       if (audioCtxRef.current.state === "suspended") await audioCtxRef.current.resume();
     } catch {}
-    if (lastTextRef.current) {
-      speak(lastTextRef.current);
+    if (lastText) {
+      speak(lastText);
     }
-  }, [speak]);
+  }, [speak, lastText]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -383,7 +382,6 @@ export default function WatchPage() {
             if (entries.length > 0) {
               const t = entries[entries.length - 1].target_text;
               setLastText(t);
-              lastTextRef.current = t;
             }
             return;
           }
@@ -470,7 +468,6 @@ export default function WatchPage() {
             console.log(`[Watch] Translation received (${msg.content_type || "speech"}): "${msg.source_text}" → "${text}" | TTS lang: ${sessionTargetLangRef.current}`);
             setTranslations((prev) => [...prev.slice(-49), entry]);
             setLastText(entry.target_text);
-            lastTextRef.current = entry.target_text;
 
             // Track metadata
             totalTranslationsRef.current += 1;
@@ -875,6 +872,7 @@ export default function WatchPage() {
               <button
                 key={s}
                 onClick={() => setFontSize(s)}
+                aria-label={s === "md" ? "Small text" : s === "lg" ? "Medium text" : "Large text"}
                 className="px-2 py-1 rounded text-xs font-bold transition"
                 style={{ color: fontSize === s ? "#C9A84C" : "#3A3A4A", background: fontSize === s ? "rgba(201,168,76,0.1)" : "transparent" }}
               >
