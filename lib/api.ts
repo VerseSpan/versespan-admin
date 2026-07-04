@@ -355,10 +355,20 @@ export const api = {
 		const data = await apiRequest<{ connection_code: string }>(`/api/propresenter/connection-code/${churchId}`);
 		return data.connection_code;
 	},
-	async syncPropresenterPlaylist(playlistId: string) {
-		return apiRequest("/api/propresenter/sync-playlist", {
+	async previewPropresenterSync(playlistId: string) {
+		return apiRequest("/api/propresenter/preview-sync", {
 			method: "POST",
 			body: JSON.stringify({ playlist_id: playlistId }),
+		});
+	},
+	async syncPropresenterPlaylist(payload: {
+		playlist_id: string;
+		translate_to: string;
+		items: { uuid: string; name: string; detected_lang: string; skip: boolean }[];
+	}) {
+		return apiRequest("/api/propresenter/sync-playlist", {
+			method: "POST",
+			body: JSON.stringify(payload),
 		});
 	},
 
