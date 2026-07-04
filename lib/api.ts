@@ -355,6 +355,12 @@ export const api = {
 		const data = await apiRequest<{ connection_code: string }>(`/api/propresenter/connection-code/${churchId}`);
 		return data.connection_code;
 	},
+	async syncPropresenterPlaylist(playlistId: string) {
+		return apiRequest("/api/propresenter/sync-playlist", {
+			method: "POST",
+			body: JSON.stringify({ playlist_id: playlistId }),
+		});
+	},
 
 	// Church Settings
 	async getChurch(churchId: number) {
