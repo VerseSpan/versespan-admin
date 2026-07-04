@@ -139,7 +139,7 @@ export default function SyncPage() {
 
       {/* Step 1: Pick playlist */}
       <div className="bg-white rounded-lg shadow p-5 space-y-3">
-        <h2 className="font-semibold text-gray-800">1. Select a playlist</h2>
+        <h2 className="font-semibold text-black">1. Select a playlist</h2>
         {playlistsLoading ? (
           <p className="text-sm text-gray-500">Loading playlists…</p>
         ) : playlists.length === 0 ? (
@@ -171,8 +171,8 @@ export default function SyncPage() {
       {items && !syncResult && (
         <div className="bg-white rounded-lg shadow p-5 space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
-            <h2 className="font-semibold text-gray-800">2. Review & confirm</h2>
-            <div className="flex items-center gap-2 text-sm text-gray-700">
+            <h2 className="font-semibold text-black">2. Review & confirm</h2>
+            <div className="flex items-center gap-2 text-sm text-black">
               <span>Translate to:</span>
               <select
                 value={translateTo}
@@ -269,8 +269,8 @@ export default function SyncPage() {
       {/* Step 3: Results */}
       {syncResult && (
         <div className="bg-white rounded-lg shadow p-5 space-y-4">
-          <h2 className="font-semibold text-gray-800">Done</h2>
-          <p className="text-sm text-gray-700">
+          <h2 className="font-semibold text-black">Done</h2>
+          <p className="text-sm text-black">
             {syncResult.songs_created} song{syncResult.songs_created !== 1 ? "s" : ""} created,{" "}
             {syncResult.songs_skipped} skipped.
           </p>
