@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, type RefObject } from "react";
 import { useParams } from "next/navigation";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Translation {
   id: number;
@@ -32,12 +34,7 @@ type PresentingState =
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "ended";
 type FeedbackState = "idle" | "form" | "submitted";
 
-const CONTENT_COLORS: Record<string, string> = {
-  scripture: "text-amber-300",
-  song: "text-blue-300",
-  speech: "text-gray-400",
-};
-
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const I18N = {
   en: {
@@ -116,6 +113,8 @@ const I18N = {
   },
 };
 
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
 function StarRating({ value, onChange, label }: { value: number; onChange: (v: number) => void; label: string }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -137,44 +136,11 @@ function StarRating({ value, onChange, label }: { value: number; onChange: (v: n
   );
 }
 
-export default function WatchPage() {
-  const { sessionId } = useParams<{ sessionId: string }>();
-  const [translations, setTranslations] = useState<Translation[]>([]);
-  const [status, setStatus] = useState<ConnectionStatus>("connecting");
-  const [ttsEnabled, setTtsEnabled] = useState(true);
-  const [audioUnlocked, setAudioUnlocked] = useState(false);
-  const [fontSize, setFontSize] = useState<"md" | "lg" | "xl">("lg");
-  const [lastText, setLastText] = useState("");
-  const [activeSong, setActiveSong] = useState<ActiveSong | null>(null);
-  const [presenting, setPresenting] = useState<PresentingState | null>(null);
-  const [feedbackState, setFeedbackState] = useState<FeedbackState>("idle");
-  const [targetLang, setTargetLang] = useState<"en" | "es">("en");
-  const [form, setForm] = useState({
-    ratingOverall: 0,
-    ratingTranslation: 0,
-    ratingAudio: 0,
-    ratingAudioDelay: 0,
-    hadBugs: null as boolean | null,
-    bugDescription: "",
-    comment: "",
-  });
+// ─── useMetrics ───────────────────────────────────────────────────────────────
 
-  // Stable refs
-  const sessionTargetLangRef = useRef("en");
-  const wsRef = useRef<WebSocket | null>(null);
-  const viewerIdRef = useRef<string>("");
-  const ttsEnabledRef = useRef(true);
-  const audioUnlockedRef = useRef(false);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const ttsAbortRef = useRef<AbortController | null>(null);
-  const ttsQueueRef = useRef<string[]>([]);
-  const ttsProcessingRef = useRef(false);
-  const activeSongRef = useRef<ActiveSong | null>(null);
-  const sessionEndedRef = useRef(false);
-  const idCounter = useRef(0);
+function useMetrics(sessionId: string | undefined) {
+  const metricsKey = `versespan-metrics-${sessionId}`;
 
-  // Metadata tracking refs
   const watchStartTimeRef = useRef(0);
   const connectionDropsRef = useRef(0);
   const totalTranslationsRef = useRef(0);
@@ -183,9 +149,6 @@ export default function WatchPage() {
   const firstTranslationTimeRef = useRef<number | null>(null);
   const lastDisconnectCodeRef = useRef<number | null>(null);
 
-  // Persist metrics to localStorage so a page refresh or history revisit
-  // doesn't reset counters that were accumulated during the live session.
-  const metricsKey = `versespan-metrics-${sessionId}`;
   const saveMetrics = useCallback(() => {
     const lats = ttsLatenciesRef.current;
     const avgTts = lats.length > 0
@@ -205,7 +168,47 @@ export default function WatchPage() {
     }));
   }, [metricsKey]);
 
-  // On mount: restore persisted metrics or start fresh
+  const buildMetadata = useCallback(() => {
+    const timestamps = wsMessageTimestampsRef.current;
+    const avgInterval = timestamps.length > 1
+      ? Math.round(
+          timestamps.slice(1).reduce((sum, t, i) => sum + (t - timestamps[i]), 0) /
+          (timestamps.length - 1)
+        )
+      : null;
+    const latencies = ttsLatenciesRef.current;
+    const avgTts = latencies.length > 0
+      ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
+      : null;
+
+    let resolvedAvgTts = avgTts;
+    let resolvedAvgWs = avgInterval;
+    if (avgTts === null || avgInterval === null) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(metricsKey) || "{}");
+        if (avgTts === null && saved.avgTtsLatencyMs) resolvedAvgTts = saved.avgTtsLatencyMs;
+        if (avgInterval === null && saved.avgWsIntervalMs) resolvedAvgWs = saved.avgWsIntervalMs;
+      } catch {}
+    }
+
+    return {
+      user_agent: navigator.userAgent,
+      watch_duration_seconds: Math.round((Date.now() - watchStartTimeRef.current) / 1000),
+      tts_enabled: ttsEnabledRefForMetrics.current,
+      connection_drops: connectionDropsRef.current,
+      avg_tts_latency_ms: resolvedAvgTts,
+      total_translations_received: totalTranslationsRef.current,
+      session_duration_ms: firstTranslationTimeRef.current
+        ? Date.now() - firstTranslationTimeRef.current
+        : null,
+      last_disconnect_reason: lastDisconnectCodeRef.current?.toString() ?? null,
+      avg_ws_message_interval_ms: resolvedAvgWs,
+    };
+  }, [metricsKey]);
+
+  // Passed in from useTTS so buildMetadata can read it without a circular dep
+  const ttsEnabledRefForMetrics = useRef(true);
+
   useEffect(() => {
     const saved = localStorage.getItem(metricsKey);
     if (saved) {
@@ -222,17 +225,48 @@ export default function WatchPage() {
     }
   }, [metricsKey, saveMetrics]);
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  return {
+    metricsKey,
+    saveMetrics,
+    buildMetadata,
+    ttsEnabledRefForMetrics,
+    watchStartTimeRef,
+    connectionDropsRef,
+    totalTranslationsRef,
+    ttsLatenciesRef,
+    wsMessageTimestampsRef,
+    firstTranslationTimeRef,
+    lastDisconnectCodeRef,
+  };
+}
 
-  // Generate or reuse a persistent viewer UUID from localStorage
-  useEffect(() => {
-    let id = localStorage.getItem("viewer_id");
-    if (!id) {
-      id = crypto.randomUUID();
-      localStorage.setItem("viewer_id", id);
-    }
-    viewerIdRef.current = id;
-  }, []);
+// ─── useTTS ───────────────────────────────────────────────────────────────────
+
+function useTTS({
+  sessionId,
+  apiUrl,
+  sessionTargetLangRef,
+  viewerIdRef,
+  ttsLatenciesRef,
+  saveMetrics,
+}: {
+  sessionId: string | undefined;
+  apiUrl: string;
+  sessionTargetLangRef: RefObject<string>;
+  viewerIdRef: RefObject<string>;
+  ttsLatenciesRef: RefObject<number[]>;
+  saveMetrics: () => void;
+}) {
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+
+  const ttsEnabledRef = useRef(true);
+  const audioUnlockedRef = useRef(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const ttsAbortRef = useRef<AbortController | null>(null);
+  const ttsQueueRef = useRef<string[]>([]);
+  const ttsProcessingRef = useRef(false);
 
   useEffect(() => { ttsEnabledRef.current = ttsEnabled; }, [ttsEnabled]);
   useEffect(() => { audioUnlockedRef.current = audioUnlocked; }, [audioUnlocked]);
@@ -262,8 +296,6 @@ export default function WatchPage() {
       } catch { return null; }
     };
 
-    // Prefetch pipeline: while item N plays, fetch item N+1 in parallel
-    // so playback is gapless.
     let prefetch: Promise<AudioBuffer | null> | null = null;
 
     try {
@@ -271,12 +303,9 @@ export default function WatchPage() {
         if (!ttsEnabledRef.current) { ttsQueueRef.current = []; break; }
 
         const item = ttsQueueRef.current.shift()!;
-
-        // Use pre-fetched buffer if ready, otherwise fetch now
         const bufferPromise = prefetch ?? fetchAudio(item);
         prefetch = null;
 
-        // Kick off fetch for the next queued item immediately (parallel)
         if (ttsQueueRef.current.length > 0) {
           prefetch = fetchAudio(ttsQueueRef.current[0]);
         }
@@ -292,7 +321,6 @@ export default function WatchPage() {
           source.onended = () => resolve();
           source.start();
           currentSourceRef.current = source;
-          // Also start prefetch while playing if a new item arrived after fetch began
           if (!prefetch && ttsQueueRef.current.length > 0) {
             prefetch = fetchAudio(ttsQueueRef.current[0]);
           }
@@ -301,9 +329,16 @@ export default function WatchPage() {
     } finally {
       ttsProcessingRef.current = false;
     }
-  }, [apiUrl, saveMetrics]);
+  }, [apiUrl, saveMetrics, sessionId, sessionTargetLangRef, viewerIdRef, ttsLatenciesRef]);
 
-  const unlockAudio = useCallback(async () => {
+  const stopTTS = useCallback(() => {
+    ttsAbortRef.current?.abort();
+    ttsQueueRef.current = [];
+    currentSourceRef.current?.stop();
+    currentSourceRef.current = null;
+  }, []);
+
+  const unlockAudio = useCallback(async (lastText: string) => {
     if (audioUnlockedRef.current) return;
     audioUnlockedRef.current = true;
     setAudioUnlocked(true);
@@ -311,36 +346,78 @@ export default function WatchPage() {
       if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
       if (audioCtxRef.current.state === "suspended") await audioCtxRef.current.resume();
     } catch {}
-    if (lastText) {
-      speak(lastText);
-    }
-  }, [speak, lastText]);
+    if (lastText) speak(lastText);
+  }, [speak]);
+
+  return {
+    ttsEnabled,
+    setTtsEnabled,
+    audioUnlocked,
+    speak,
+    stopTTS,
+    unlockAudio,
+  };
+}
+
+// ─── useWatchSocket ───────────────────────────────────────────────────────────
+
+function useWatchSocket({
+  sessionId,
+  speak,
+  stopTTS,
+  saveMetrics,
+  sessionTargetLangRef,
+  connectionDropsRef,
+  totalTranslationsRef,
+  wsMessageTimestampsRef,
+  firstTranslationTimeRef,
+  lastDisconnectCodeRef,
+}: {
+  sessionId: string | undefined;
+  speak: (text: string) => void;
+  stopTTS: () => void;
+  saveMetrics: () => void;
+  sessionTargetLangRef: RefObject<string>;
+  connectionDropsRef: RefObject<number>;
+  totalTranslationsRef: RefObject<number>;
+  wsMessageTimestampsRef: RefObject<number[]>;
+  firstTranslationTimeRef: RefObject<number | null>;
+  lastDisconnectCodeRef: RefObject<number | null>;
+}) {
+  const [status, setStatus] = useState<ConnectionStatus>("connecting");
+  const [translations, setTranslations] = useState<Translation[]>([]);
+  const [lastText, setLastText] = useState("");
+  const [targetLang, setTargetLang] = useState<"en" | "es">("en");
+  const [activeSong, setActiveSong] = useState<ActiveSong | null>(null);
+  const [presenting, setPresenting] = useState<PresentingState | null>(null);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const activeSongRef = useRef<ActiveSong | null>(null);
+  const sessionEndedRef = useRef(false);
+  const idCounter = useRef(0);
 
   useEffect(() => {
     if (!sessionId) return;
 
     const wsApiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const wsUrl = wsApiUrl.replace("http://", "ws://").replace("https://", "wss://");
-    const url = `${wsUrl}/api/ws/watch/${sessionId}?viewer_id=${viewerIdRef.current}`;
+    const url = `${wsUrl}/api/ws/watch/${sessionId}?viewer_id=`;
 
     let reconnectTimeout: ReturnType<typeof setTimeout>;
     let dead = false;
 
     function connect() {
-      console.log(`[Watch] Connecting to ${url}`);
+      console.log(`[Watch] Connecting`);
       setStatus("connecting");
-      const ws = new WebSocket(url);
+      const viewerId = localStorage.getItem("viewer_id") ?? "";
+      const ws = new WebSocket(url + viewerId);
       wsRef.current = ws;
 
       ws.onopen = () => {
         console.log(`[Watch] Connected (drops so far: ${connectionDropsRef.current})`);
         setStatus("connected");
-        // Heartbeat: watch page sends no audio so the connection looks idle
-        // to Fly.io's proxy during translation gaps. Ping every 20s to keep it alive.
         const heartbeat = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: "ping" }));
-          }
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
         }, 20000);
         ws.addEventListener("close", () => clearInterval(heartbeat));
       };
@@ -379,10 +456,7 @@ export default function WatchPage() {
             }));
             console.log(`[Watch] History loaded: ${entries.length} translations`);
             setTranslations(entries);
-            if (entries.length > 0) {
-              const t = entries[entries.length - 1].target_text;
-              setLastText(t);
-            }
+            if (entries.length > 0) setLastText(entries[entries.length - 1].target_text);
             return;
           }
 
@@ -400,12 +474,7 @@ export default function WatchPage() {
               setTargetLang(tgt as "en" | "es");
               activeSongRef.current = song;
               setActiveSong(song);
-              // Stop any playing TTS and clear the queue so no queued translations
-              // play over the song
-              ttsAbortRef.current?.abort();
-              ttsQueueRef.current = [];
-              currentSourceRef.current?.stop();
-              currentSourceRef.current = null;
+              stopTTS();
               setPresenting({ content_type: "song", ...song });
             } else if (msg.content_type === "scripture") {
               setPresenting({
@@ -436,11 +505,7 @@ export default function WatchPage() {
             sessionTargetLangRef.current = tgt;
             activeSongRef.current = song;
             setActiveSong(song);
-            // Stop any playing TTS and clear the queue
-            ttsAbortRef.current?.abort();
-            ttsQueueRef.current = [];
-            currentSourceRef.current?.stop();
-            currentSourceRef.current = null;
+            stopTTS();
             setPresenting({ content_type: "song", ...song });
           }
 
@@ -469,16 +534,13 @@ export default function WatchPage() {
             setTranslations((prev) => [...prev.slice(-49), entry]);
             setLastText(entry.target_text);
 
-            // Track metadata
             totalTranslationsRef.current += 1;
             if (firstTranslationTimeRef.current === null) firstTranslationTimeRef.current = now;
             wsMessageTimestampsRef.current.push(now);
             if (wsMessageTimestampsRef.current.length > 200) wsMessageTimestampsRef.current.shift();
             saveMetrics();
 
-            if (!activeSongRef.current) {
-              speak(entry.target_text);
-            }
+            if (!activeSongRef.current) speak(entry.target_text);
           }
 
           if (msg.type === "error") {
@@ -519,46 +581,87 @@ export default function WatchPage() {
       clearTimeout(reconnectTimeout);
       wsRef.current?.close();
     };
-  }, [sessionId, speak, saveMetrics]);
+  }, [sessionId, speak, stopTTS, saveMetrics, sessionTargetLangRef, connectionDropsRef, totalTranslationsRef, wsMessageTimestampsRef, firstTranslationTimeRef, lastDisconnectCodeRef]);
 
-  const buildMetadata = useCallback(() => {
-    const timestamps = wsMessageTimestampsRef.current;
-    const avgInterval = timestamps.length > 1
-      ? Math.round(
-          timestamps.slice(1).reduce((sum, t, i) => sum + (t - timestamps[i]), 0) /
-          (timestamps.length - 1)
-        )
-      : null;
-    const latencies = ttsLatenciesRef.current;
-    const avgTts = latencies.length > 0
-      ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
-      : null;
+  return { status, translations, lastText, targetLang, activeSong, presenting };
+}
 
-    // Fall back to persisted averages if refs were reset by a page reload
-    let resolvedAvgTts = avgTts;
-    let resolvedAvgWs = avgInterval;
-    if (avgTts === null || avgInterval === null) {
-      try {
-        const saved = JSON.parse(localStorage.getItem(metricsKey) || "{}");
-        if (avgTts === null && saved.avgTtsLatencyMs) resolvedAvgTts = saved.avgTtsLatencyMs;
-        if (avgInterval === null && saved.avgWsIntervalMs) resolvedAvgWs = saved.avgWsIntervalMs;
-      } catch {}
+// ─── WatchPage ────────────────────────────────────────────────────────────────
+
+export default function WatchPage() {
+  const { sessionId } = useParams<{ sessionId: string }>();
+
+  const [fontSize, setFontSize] = useState<"md" | "lg" | "xl">("lg");
+  const [feedbackState, setFeedbackState] = useState<FeedbackState>("idle");
+  const [form, setForm] = useState({
+    ratingOverall: 0,
+    ratingTranslation: 0,
+    ratingAudio: 0,
+    ratingAudioDelay: 0,
+    hadBugs: null as boolean | null,
+    bugDescription: "",
+    comment: "",
+  });
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+  // Shared refs passed between hooks
+  const sessionTargetLangRef = useRef("en");
+  const viewerIdRef = useRef<string>("");
+
+  useEffect(() => {
+    let id = localStorage.getItem("viewer_id");
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem("viewer_id", id);
     }
+    viewerIdRef.current = id;
+  }, []);
 
-    return {
-      user_agent: navigator.userAgent,
-      watch_duration_seconds: Math.round((Date.now() - watchStartTimeRef.current) / 1000),
-      tts_enabled: ttsEnabledRef.current,
-      connection_drops: connectionDropsRef.current,
-      avg_tts_latency_ms: resolvedAvgTts,
-      total_translations_received: totalTranslationsRef.current,
-      session_duration_ms: firstTranslationTimeRef.current
-        ? Date.now() - firstTranslationTimeRef.current
-        : null,
-      last_disconnect_reason: lastDisconnectCodeRef.current?.toString() ?? null,
-      avg_ws_message_interval_ms: resolvedAvgWs,
-    };
-  }, [metricsKey]);
+  const {
+    metricsKey,
+    saveMetrics,
+    buildMetadata,
+    ttsEnabledRefForMetrics,
+    connectionDropsRef,
+    totalTranslationsRef,
+    ttsLatenciesRef,
+    wsMessageTimestampsRef,
+    firstTranslationTimeRef,
+    lastDisconnectCodeRef,
+  } = useMetrics(sessionId);
+
+  const {
+    ttsEnabled,
+    setTtsEnabled,
+    audioUnlocked,
+    speak,
+    stopTTS,
+    unlockAudio,
+  } = useTTS({
+    sessionId,
+    apiUrl,
+    sessionTargetLangRef,
+    viewerIdRef,
+    ttsLatenciesRef,
+    saveMetrics,
+  });
+
+  // Keep the metrics hook's ttsEnabledRef in sync
+  useEffect(() => { ttsEnabledRefForMetrics.current = ttsEnabled; }, [ttsEnabled, ttsEnabledRefForMetrics]);
+
+  const { status, translations, lastText, targetLang, presenting } = useWatchSocket({
+    sessionId,
+    speak,
+    stopTTS,
+    saveMetrics,
+    sessionTargetLangRef,
+    connectionDropsRef,
+    totalTranslationsRef,
+    wsMessageTimestampsRef,
+    firstTranslationTimeRef,
+    lastDisconnectCodeRef,
+  });
 
   const submitFeedback = useCallback(async () => {
     const payload = {
@@ -588,7 +691,6 @@ export default function WatchPage() {
   const sourceSizeClass = { md: "text-sm", lg: "text-base", xl: "text-lg" }[fontSize];
   const t = I18N[targetLang] ?? I18N.en;
 
-  // Full-screen session-ended flow
   const vsStyle = { background: "#09090F", color: "#F5F0E8", fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif" };
 
   if (status === "ended") {
@@ -613,7 +715,6 @@ export default function WatchPage() {
       const canSubmit = form.ratingOverall > 0 && form.ratingTranslation > 0 && form.ratingAudio > 0 && form.ratingAudioDelay > 0 && form.hadBugs !== null;
       return (
         <div className="h-screen flex flex-col overflow-hidden" style={vsStyle}>
-          {/* Form header */}
           <div
             className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
             style={{ background: "#0D0D17", borderBottom: "1px solid #1E1E2A" }}
@@ -630,13 +731,11 @@ export default function WatchPage() {
             <p className="text-base font-semibold" style={{ color: "#F5F0E8" }}>{t.formTitle}</p>
           </div>
 
-          {/* Scrollable form body */}
           <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
             <StarRating value={form.ratingOverall} onChange={(v) => setForm((f) => ({ ...f, ratingOverall: v }))} label={t.overall} />
             <StarRating value={form.ratingTranslation} onChange={(v) => setForm((f) => ({ ...f, ratingTranslation: v }))} label={t.translation} />
             <StarRating value={form.ratingAudio} onChange={(v) => setForm((f) => ({ ...f, ratingAudio: v }))} label={t.audio} />
 
-            {/* Audio delay */}
             <div className="flex flex-col gap-1.5">
               <span className="text-sm" style={{ color: "#6B6B7A" }}>{t.audioDelay}</span>
               <div className="flex gap-2">
@@ -657,7 +756,6 @@ export default function WatchPage() {
               </div>
             </div>
 
-            {/* Bug yes/no */}
             <div className="flex flex-col gap-2">
               <span className="text-sm" style={{ color: "#6B6B7A" }}>{t.hadBugs}</span>
               <div className="flex gap-3">
@@ -688,7 +786,6 @@ export default function WatchPage() {
               )}
             </div>
 
-            {/* Optional comment */}
             <div className="flex flex-col gap-1.5">
               <span className="text-sm" style={{ color: "#6B6B7A" }}>{t.comment}</span>
               <textarea
@@ -702,7 +799,6 @@ export default function WatchPage() {
             </div>
           </div>
 
-          {/* Submit */}
           <div className="flex-shrink-0 px-5 py-4" style={{ borderTop: "1px solid #1E1E2A", background: "#09090F" }}>
             <button
               onClick={submitFeedback}
@@ -720,7 +816,6 @@ export default function WatchPage() {
       );
     }
 
-    // Idle — session ended landing
     return (
       <div className="h-screen flex flex-col items-center justify-center px-8 text-center gap-6" style={vsStyle}>
         <div>
@@ -768,7 +863,7 @@ export default function WatchPage() {
     <div
       className="h-screen flex flex-col overflow-hidden"
       style={{ background: "#09090F", color: "#F5F0E8", fontFamily: "var(--font-jakarta), 'Plus Jakarta Sans', sans-serif" }}
-      onClick={unlockAudio}
+      onClick={() => unlockAudio(lastText)}
     >
       {/* Join screen */}
       {!audioUnlocked && (
@@ -777,7 +872,6 @@ export default function WatchPage() {
           style={{ background: "#09090F" }}
         >
           <div className="flex flex-col items-center gap-8 text-center max-w-xs w-full">
-            {/* Wordmark */}
             <div>
               <div
                 style={{
@@ -806,7 +900,6 @@ export default function WatchPage() {
               </div>
             </div>
 
-            {/* Language badge */}
             <div
               style={{
                 background: "rgba(201,168,76,0.08)",
@@ -824,10 +917,9 @@ export default function WatchPage() {
               {targetLang === "es" ? "Español" : "English"}
             </div>
 
-            {/* CTA */}
             <div className="w-full flex flex-col gap-3">
               <button
-                onClick={unlockAudio}
+                onClick={() => unlockAudio(lastText)}
                 className="w-full py-4 rounded-xl font-semibold text-base transition-all active:scale-95"
                 style={{
                   background: "#C9A84C",
@@ -885,12 +977,7 @@ export default function WatchPage() {
           <button
             onClick={() => {
               setTtsEnabled((v) => {
-                if (v) {
-                  ttsAbortRef.current?.abort();
-                  currentSourceRef.current?.stop();
-                  currentSourceRef.current = null;
-                  ttsQueueRef.current = [];
-                }
+                if (v) stopTTS();
                 return !v;
               });
             }}
