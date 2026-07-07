@@ -146,7 +146,6 @@ export default function WatchPage() {
     metricsKey,
     saveMetrics,
     buildMetadata,
-    ttsEnabledRefForMetrics,
     connectionDropsRef,
     totalTranslationsRef,
     ttsLatenciesRef,
@@ -170,9 +169,6 @@ export default function WatchPage() {
     ttsLatenciesRef,
     saveMetrics,
   });
-
-  // Keep the metrics hook's ttsEnabledRef in sync
-  useEffect(() => { ttsEnabledRefForMetrics.current = ttsEnabled; }, [ttsEnabled, ttsEnabledRefForMetrics]);
 
   const { status, translations, lastText, targetLang, presenting } = useWatchSocket({
     sessionId,
@@ -198,7 +194,7 @@ export default function WatchPage() {
       had_bugs: form.hadBugs ?? false,
       bug_description: form.bugDescription || null,
       comment: form.comment || null,
-      ...buildMetadata(),
+      ...buildMetadata(ttsEnabled),
     };
     try {
       await fetch(`${apiUrl}/api/feedback`, {

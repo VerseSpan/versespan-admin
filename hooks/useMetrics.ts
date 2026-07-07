@@ -10,8 +10,6 @@ export function useMetrics(sessionId: string | undefined) {
   const wsMessageTimestampsRef = useRef<number[]>([]);
   const firstTranslationTimeRef = useRef<number | null>(null);
   const lastDisconnectCodeRef = useRef<number | null>(null);
-  // Written by WatchPage so buildMetadata can read it without a circular dep
-  const ttsEnabledRefForMetrics = useRef(true);
 
   const saveMetrics = useCallback(() => {
     const lats = ttsLatenciesRef.current;
@@ -32,7 +30,7 @@ export function useMetrics(sessionId: string | undefined) {
     }));
   }, [metricsKey]);
 
-  const buildMetadata = useCallback(() => {
+  const buildMetadata = useCallback((ttsEnabled: boolean) => {
     const timestamps = wsMessageTimestampsRef.current;
     const avgInterval = timestamps.length > 1
       ? Math.round(
@@ -58,7 +56,7 @@ export function useMetrics(sessionId: string | undefined) {
     return {
       user_agent: navigator.userAgent,
       watch_duration_seconds: Math.round((Date.now() - watchStartTimeRef.current) / 1000),
-      tts_enabled: ttsEnabledRefForMetrics.current,
+      tts_enabled: ttsEnabled,
       connection_drops: connectionDropsRef.current,
       avg_tts_latency_ms: resolvedAvgTts,
       total_translations_received: totalTranslationsRef.current,
@@ -90,7 +88,6 @@ export function useMetrics(sessionId: string | undefined) {
     metricsKey,
     saveMetrics,
     buildMetadata,
-    ttsEnabledRefForMetrics,
     watchStartTimeRef,
     connectionDropsRef,
     totalTranslationsRef,
