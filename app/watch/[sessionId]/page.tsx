@@ -205,7 +205,7 @@ export default function WatchPage() {
     } catch {}
     localStorage.removeItem(metricsKey);
     setFeedbackState("submitted");
-  }, [form, sessionId, apiUrl, buildMetadata, metricsKey]);
+  }, [form, sessionId, apiUrl, buildMetadata, metricsKey, ttsEnabled]);
 
   const fontSizeClass = { md: "text-xl", lg: "text-2xl", xl: "text-3xl" }[fontSize];
   const sourceSizeClass = { md: "text-sm", lg: "text-base", xl: "text-lg" }[fontSize];
