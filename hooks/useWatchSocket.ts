@@ -8,6 +8,15 @@ export interface Translation {
   timestamp: string;
 }
 
+/** A sentence still forming (sentence_assembler backend flag). Updated in place
+ *  by utterance_id; never spoken, never appended to history. */
+export interface PendingUtterance {
+  utteranceId: string;
+  text: string;
+  sourceText: string;
+  revision: number;
+}
+
 export interface SongSection {
   section_number: number;
   section_name: string;
@@ -57,11 +66,13 @@ export function useWatchSocket({
   const [targetLang, setTargetLang] = useState<"en" | "es">("en");
   const [activeSong, setActiveSong] = useState<ActiveSong | null>(null);
   const [presenting, setPresenting] = useState<PresentingState | null>(null);
+  const [pendingUtterance, setPendingUtterance] = useState<PendingUtterance | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const activeSongRef = useRef<ActiveSong | null>(null);
   const sessionEndedRef = useRef(false);
   const idCounter = useRef(0);
+  const lastFinalizedUtteranceRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -189,6 +200,35 @@ export function useWatchSocket({
               console.warn("[Watch] Translation dropped — empty target_text", msg);
               return;
             }
+
+            // Partial: a sentence still forming (sentence_assembler flag on the
+            // backend). Update the pending line in place — never append to
+            // history, never speak, never count in metrics.
+            if (msg.status === "partial" && msg.utterance_id) {
+              // Stale guard: a partial arriving after its final is dropped
+              if (msg.utterance_id === lastFinalizedUtteranceRef.current) return;
+              setPendingUtterance((prev) => {
+                if (prev && prev.utteranceId === msg.utterance_id && msg.revision <= prev.revision) {
+                  return prev; // apply-if-newer
+                }
+                return {
+                  utteranceId: msg.utterance_id,
+                  text,
+                  sourceText: msg.source_text || "",
+                  revision: msg.revision ?? 0,
+                };
+              });
+              return;
+            }
+
+            // Final (status === "final", or no status — legacy backend / flag off)
+            if (msg.utterance_id) {
+              lastFinalizedUtteranceRef.current = msg.utterance_id;
+              setPendingUtterance((prev) =>
+                prev && prev.utteranceId === msg.utterance_id ? null : prev
+              );
+            }
+
             const now = Date.now();
             const entry: Translation = {
               id: ++idCounter.current,
@@ -250,5 +290,5 @@ export function useWatchSocket({
     };
   }, [sessionId, speak, stopTTS, saveMetrics, sessionTargetLangRef, connectionDropsRef, totalTranslationsRef, wsMessageTimestampsRef, firstTranslationTimeRef, lastDisconnectCodeRef]);
 
-  return { status, translations, lastText, targetLang, activeSong, presenting };
+  return { status, translations, lastText, targetLang, activeSong, presenting, pendingUtterance };
 }

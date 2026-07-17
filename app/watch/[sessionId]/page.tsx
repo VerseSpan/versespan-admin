@@ -144,7 +144,7 @@ export default function WatchPage() {
     saveMetrics,
   });
 
-  const { status, translations, lastText, targetLang, presenting } = useWatchSocket({
+  const { status, translations, lastText, targetLang, presenting, pendingUtterance } = useWatchSocket({
     sessionId,
     speak,
     stopTTS,
@@ -281,12 +281,18 @@ export default function WatchPage() {
                 <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#C9A84C" }}>{t.liveTranslation}</span>
               </div>
 
-              {lastText && (
+              {(pendingUtterance || lastText) && (
                 <div
                   className="px-5 py-4 flex-shrink-0"
                   style={{ background: "#111118", borderBottom: "1px solid #1E1E2A", borderLeft: "3px solid #C9A84C" }}
                 >
-                  <p className={`${fontSizeClass} font-semibold leading-snug`} style={{ color: "#F5F0E8" }}>{lastText}</p>
+                  <p
+                    className={`${fontSizeClass} font-semibold leading-snug transition-colors duration-300`}
+                    style={{ color: pendingUtterance ? "#A8A294" : "#F5F0E8" }}
+                  >
+                    {pendingUtterance ? pendingUtterance.text : lastText}
+                    {pendingUtterance && <span className="animate-pulse" style={{ color: "#C9A84C" }}>…</span>}
+                  </p>
                 </div>
               )}
 
