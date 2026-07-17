@@ -1,36 +1,29 @@
 "use client";
 
-import { memo, useRef } from "react";
+import { memo } from "react";
 
 /**
  * The forming sentence (a partial from the sentence assembler / live layer).
  *
- * Words already shown stay put; newly arrived words slide up + fade in with a
- * small stagger, terminated by a blinking gold cursor — reads as live typing
- * without character-level reflow jitter. Settles when the final replaces it.
+ * Words are spans keyed by index: existing spans never remount (their mount
+ * animation already ran), newly appended words mount fresh and animate in —
+ * "new words only" falls out of React's mount semantics, no state or refs.
+ * The parent keys this component by utterance_id so each new sentence starts
+ * a fresh cascade. Settles when the final replaces it.
  */
 function PendingLine({ text, fontSizeClass }: { text: string; fontSizeClass: string }) {
   const words = text.split(/\s+/).filter(Boolean);
-
-  // Words rendered on the previous pass don't re-animate; only the new tail does.
-  const prevCountRef = useRef(0);
-  const firstNewIndex = words.length < prevCountRef.current ? 0 : prevCountRef.current;
-  prevCountRef.current = words.length;
 
   return (
     <p className={`${fontSizeClass} font-semibold leading-snug`} style={{ color: "#B8B2A4" }}>
       {words.map((word, i) => (
         <span
-          key={`${i}-${word}`}
-          style={
-            i >= firstNewIndex
-              ? {
-                  display: "inline-block",
-                  animation: "wordIn 0.28s ease both",
-                  animationDelay: `${(i - firstNewIndex) * 55}ms`,
-                }
-              : { display: "inline-block" }
-          }
+          key={i}
+          style={{
+            display: "inline-block",
+            animation: "wordIn 0.28s ease both",
+            animationDelay: `${(i % 8) * 45}ms`,
+          }}
         >
           {word}
           {i < words.length - 1 ? " " : ""}

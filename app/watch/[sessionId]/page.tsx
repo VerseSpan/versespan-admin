@@ -288,7 +288,7 @@ export default function WatchPage() {
                   style={{ background: "#111118", borderBottom: "1px solid #1E1E2A", borderLeft: "3px solid #C9A84C" }}
                 >
                   {pendingUtterance ? (
-                    <PendingLine text={pendingUtterance.text} fontSizeClass={fontSizeClass} />
+                    <PendingLine key={pendingUtterance.utteranceId} text={pendingUtterance.text} fontSizeClass={fontSizeClass} />
                   ) : (
                     <p className={`${fontSizeClass} font-semibold leading-snug transition-colors duration-300`} style={{ color: "#F5F0E8" }}>
                       {lastText}
