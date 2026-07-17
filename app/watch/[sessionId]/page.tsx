@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useMetrics } from "@/hooks/useMetrics";
 import { useTTS } from "@/hooks/useTTS";
 import { useWatchSocket } from "@/hooks/useWatchSocket";
+import PendingLine from "./components/PendingLine";
 import ScriptureOverlay from "./components/ScriptureOverlay";
 import SongOverlay from "./components/SongOverlay";
 import type { FeedbackState, FormValues, I18NStrings } from "./types";
@@ -286,13 +287,13 @@ export default function WatchPage() {
                   className="px-5 py-4 flex-shrink-0"
                   style={{ background: "#111118", borderBottom: "1px solid #1E1E2A", borderLeft: "3px solid #C9A84C" }}
                 >
-                  <p
-                    className={`${fontSizeClass} font-semibold leading-snug transition-colors duration-300`}
-                    style={{ color: pendingUtterance ? "#A8A294" : "#F5F0E8" }}
-                  >
-                    {pendingUtterance ? pendingUtterance.text : lastText}
-                    {pendingUtterance && <span className="animate-pulse" style={{ color: "#C9A84C" }}>…</span>}
-                  </p>
+                  {pendingUtterance ? (
+                    <PendingLine text={pendingUtterance.text} fontSizeClass={fontSizeClass} />
+                  ) : (
+                    <p className={`${fontSizeClass} font-semibold leading-snug transition-colors duration-300`} style={{ color: "#F5F0E8" }}>
+                      {lastText}
+                    </p>
+                  )}
                 </div>
               )}
 
