@@ -56,6 +56,9 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
     const client = new TranslationClient({
       sessionId,
       onTranslation: (message: TranslationMessage) => {
+        // Admin view shows the authoritative record only — partials (forming
+        // sentences, ~1/s during speech) are a viewer-UI concern
+        if ((message as { status?: string }).status === "partial") return;
         // Add translation to store so it persists across navigation
         addTranslation(sessionId, message);
       },
