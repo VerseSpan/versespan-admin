@@ -37,6 +37,11 @@ export type PresentingState =
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "ended";
 
+/** Orphan backstop: live partials update ~1/s and batches arrive within ~7s
+ *  even in flowing speech, so a pending line untouched this long lost its
+ *  final (e.g. its batch was hallucination-filtered) and must not hang. */
+const PENDING_ORPHAN_TTL_MS = 10_000;
+
 export function useWatchSocket({
   sessionId,
   speak,
@@ -73,6 +78,14 @@ export function useWatchSocket({
   const sessionEndedRef = useRef(false);
   const idCounter = useRef(0);
   const lastFinalizedUtteranceRef = useRef<string | null>(null);
+
+  // Every partial replaces pendingUtterance with a fresh object, so this timer
+  // resets on each update and only fires for a line nothing will ever finalize
+  useEffect(() => {
+    if (!pendingUtterance) return;
+    const timer = setTimeout(() => setPendingUtterance(null), PENDING_ORPHAN_TTL_MS);
+    return () => clearTimeout(timer);
+  }, [pendingUtterance]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -221,13 +234,16 @@ export function useWatchSocket({
               return;
             }
 
-            // Final (status === "final", or no status — legacy backend / flag off)
+            // Final (status === "final", or no status — legacy backend / flag off).
+            // ANY final clears the forming line: the backend flushes its pending
+            // before emitting one, so whatever partial is on screen is stale even
+            // when the final arrived under a different utterance id (scripture,
+            // ProPresenter cues). A still-forming sentence re-establishes itself
+            // on its next partial (~1s later).
             if (msg.utterance_id) {
               lastFinalizedUtteranceRef.current = msg.utterance_id;
-              setPendingUtterance((prev) =>
-                prev && prev.utteranceId === msg.utterance_id ? null : prev
-              );
             }
+            setPendingUtterance(null);
 
             const now = Date.now();
             const entry: Translation = {
