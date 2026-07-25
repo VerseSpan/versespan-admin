@@ -163,9 +163,12 @@ export function useWatchSocket({
               };
               sessionTargetLangRef.current = tgt;
               setTargetLang(tgt as "en" | "es");
+              // Set the song flag (suppresses SUBSEQUENT speech finals at the
+              // speak() guard below) but do NOT stopTTS — the cue-flush final
+              // was just broadcast right before this event and is the speaker's
+              // real words transitioning into worship; let it finish speaking.
               activeSongRef.current = song;
               setActiveSong(song);
-              stopTTS();
               setPresenting({ content_type: "song", ...song });
             } else if (msg.content_type === "scripture") {
               setPresenting({
@@ -194,9 +197,10 @@ export function useWatchSocket({
               sections: msg.sections || [],
             };
             sessionTargetLangRef.current = tgt;
+            // Same as the presenting/song path: flag suppresses subsequent
+            // speech, but any cue-flush final already speaking finishes.
             activeSongRef.current = song;
             setActiveSong(song);
-            stopTTS();
             setPresenting({ content_type: "song", ...song });
           }
 
