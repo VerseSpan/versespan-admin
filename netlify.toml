@@ -1,0 +1,7 @@
+# EC2_INSTANCE_ID and EC2_AWS_REGION are identifiers, not secrets — their values
+# legitimately appear in code (the us-east-1 default in lib/ec2.ts) and in
+# docs/admin-control-setup.md. Exclude just these two keys from the secrets scan;
+# the real secrets (AWS secret key, JWT_SECRET_KEY, DATABASE_URL) are never
+# committed and are still scanned.
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "EC2_INSTANCE_ID,EC2_AWS_REGION"
