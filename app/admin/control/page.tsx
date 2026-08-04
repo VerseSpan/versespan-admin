@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import Link from "next/link";
 
 interface Ec2State {
@@ -48,6 +48,7 @@ export default function ControlPage() {
   const [health, setHealth] = useState<Health | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [signedIn, setSignedIn] = useState<boolean>(() => !!token());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(async () => {
@@ -75,15 +76,12 @@ export default function ControlPage() {
   }, []);
 
   useEffect(() => {
-    if (!token()) {
-      setError("Not signed in");
-      return;
-    }
+    if (!token()) return; // show the login form; polling starts after sign-in
     refresh();
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [refresh]);
+  }, [refresh, signedIn]);
 
   const act = async (action: "start" | "stop") => {
     setBusy(true);
@@ -116,18 +114,13 @@ export default function ControlPage() {
           </Link>
         </div>
 
-        {error === "Not signed in" ? (
-          <div
-            className="rounded-xl p-5 text-center"
-            style={{ background: "var(--vs-card)", border: "1px solid var(--vs-border)" }}
-          >
-            <p className="mb-3" style={{ color: "var(--vs-muted)" }}>
-              Please sign in to control the server.
-            </p>
-            <Link href="/login" className="font-medium" style={{ color: "var(--vs-gold)" }}>
-              Go to login →
-            </Link>
-          </div>
+        {!signedIn ? (
+          <ControlLogin
+            onSignedIn={() => {
+              setSignedIn(true);
+              setError(null);
+            }}
+          />
         ) : (
           <>
             <section
@@ -197,7 +190,7 @@ export default function ControlPage() {
               )}
             </section>
 
-            {error && error !== "Not signed in" && (
+            {error && (
               <p className="mt-4 text-center text-sm" style={{ color: "#F85149" }}>
                 {error}
               </p>
@@ -211,5 +204,88 @@ export default function ControlPage() {
 
       <style>{`@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.35 } }`}</style>
     </main>
+  );
+}
+
+/** Sign in against Neon directly (EC2-independent) so you can cold-start the
+ *  backend even when it's off — stores the token where the app expects it. */
+function ControlLogin({ onSignedIn }: { onSignedIn: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Sign-in failed");
+      localStorage.setItem("authToken", body.token);
+      if (body.churchId != null) localStorage.setItem("churchId", String(body.churchId));
+      onSignedIn();
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : "Sign-in failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const field: CSSProperties = {
+    background: "var(--vs-bg)",
+    border: "1px solid var(--vs-border)",
+    color: "var(--vs-text)",
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      className="rounded-2xl p-5"
+      style={{ background: "var(--vs-card)", border: "1px solid var(--vs-border)" }}
+    >
+      <p className="mb-4 text-sm" style={{ color: "var(--vs-muted)" }}>
+        Sign in to control the server.
+      </p>
+      <input
+        type="email"
+        inputMode="email"
+        autoComplete="email"
+        placeholder="Email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        required
+        className="mb-3 w-full rounded-xl px-3 py-3 text-base"
+        style={field}
+      />
+      <input
+        type="password"
+        autoComplete="current-password"
+        placeholder="Password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        required
+        className="mb-4 w-full rounded-xl px-3 py-3 text-base"
+        style={field}
+      />
+      <button
+        type="submit"
+        disabled={busy}
+        className="w-full rounded-xl py-3 font-semibold transition disabled:opacity-50"
+        style={{ background: "var(--vs-gold)", color: "#000" }}
+      >
+        {busy ? "Signing in…" : "Sign in"}
+      </button>
+      {err && (
+        <p className="mt-3 text-center text-sm" style={{ color: "#F85149" }}>
+          {err}
+        </p>
+      )}
+    </form>
   );
 }
