@@ -1,12 +1,20 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const PUBLIC_PATHS = ['/login', '/watch', '/join'];
+// /admin/control is public: it shows its own inline sign-in (serverless login,
+// works when EC2 is off) and its API calls carry a Bearer token.
+const PUBLIC_PATHS = ['/login', '/watch', '/join', '/admin/control'];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const token = request.cookies.get('authToken')?.value;
 
+  // API routes authenticate themselves (Bearer / their own logic). Never bounce
+  // them to the HTML login page — a 307 on /api/admin/login breaks sign-in.
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+
+  const token = request.cookies.get('authToken')?.value;
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
 
   if (!token && !isPublic) {

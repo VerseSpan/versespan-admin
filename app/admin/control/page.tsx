@@ -228,6 +228,8 @@ function ControlLogin({ onSignedIn }: { onSignedIn: () => void }) {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Sign-in failed");
       localStorage.setItem("authToken", body.token);
+      // Cookie too, so the middleware sees the session app-wide (matches lib/api)
+      document.cookie = `authToken=${body.token}; path=/; SameSite=Strict`;
       if (body.churchId != null) localStorage.setItem("churchId", String(body.churchId));
       onSignedIn();
     } catch (e2) {
