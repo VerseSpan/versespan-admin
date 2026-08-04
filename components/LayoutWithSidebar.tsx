@@ -8,6 +8,7 @@ const NAV = [
   { href: "/sessions", label: "Sessions" },
   { href: "/songs", label: "Songs" },
   { href: "/settings", label: "Settings" },
+  { href: "/admin/control", label: "Control" },
 ];
 
 export function LayoutWithSidebar({ children }: { children: React.ReactNode }) {
