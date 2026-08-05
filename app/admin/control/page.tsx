@@ -43,9 +43,19 @@ const COLOR: Record<string, string> = {
   unknown: "#6B6B7A",
 };
 
+interface MonitorSummary {
+  session: { churchId: number; startedAt: string; durationMin: number | null } | null;
+  finals: number;
+  capHitPct: number;
+  flicker: number | null;
+  decodeDrops: number;
+  gate: { rows: number; acted: number; falsePass: number };
+}
+
 export default function ControlPage() {
   const [ec2, setEc2] = useState<Ec2State | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
+  const [monitor, setMonitor] = useState<MonitorSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [signedIn, setSignedIn] = useState<boolean>(() => !!token());
@@ -78,6 +88,18 @@ export default function ControlPage() {
   useEffect(() => {
     if (!token()) return; // show the login form; polling starts after sign-in
     refresh();
+    // Last-service stats from Neon (works with EC2 off) — fetch once on load
+    (async () => {
+      try {
+        const t = token();
+        const res = await fetch("/api/monitor/summary", {
+          headers: t ? { Authorization: `Bearer ${t}` } : {},
+        });
+        if (res.ok) setMonitor(await res.json());
+      } catch {
+        /* non-critical */
+      }
+    })();
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
@@ -190,6 +212,8 @@ export default function ControlPage() {
               )}
             </section>
 
+            {monitor?.session && <MonitorCard m={monitor} />}
+
             {error && (
               <p className="mt-4 text-center text-sm" style={{ color: "#F85149" }}>
                 {error}
@@ -204,6 +228,58 @@ export default function ControlPage() {
 
       <style>{`@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.35 } }`}</style>
     </main>
+  );
+}
+
+/** Last-service health at a glance, straight from Neon (works with EC2 off). */
+function MonitorCard({ m }: { m: MonitorSummary }) {
+  const started = m.session?.startedAt ? new Date(m.session.startedAt) : null;
+  const when = started
+    ? started.toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
+      (m.session?.durationMin != null ? ` · ${m.session.durationMin} min` : "")
+    : "";
+  const stat = (label: string, value: string, hint?: { text: string; good: boolean }) => (
+    <div>
+      <div className="text-xs" style={{ color: "var(--vs-muted)" }}>
+        {label}
+      </div>
+      <div className="text-lg font-semibold">{value}</div>
+      {hint && (
+        <div className="text-xs" style={{ color: hint.good ? "#3FB950" : "#E3B341" }}>
+          {hint.text}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <section
+      className="mt-4 rounded-2xl p-5"
+      style={{ background: "var(--vs-card)", border: "1px solid var(--vs-border)" }}
+    >
+      <div className="mb-3 flex items-baseline justify-between">
+        <span className="text-sm font-semibold">Last service</span>
+        <span className="text-xs" style={{ color: "var(--vs-muted)" }}>
+          {when}
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-4">
+        {stat("Sentences", String(m.finals))}
+        {stat("Run-ons", `${m.capHitPct}%`, { text: m.capHitPct <= 20 ? "good" : "high", good: m.capHitPct <= 20 })}
+        {stat("Flicker", m.flicker == null ? "—" : m.flicker.toFixed(2), {
+          text: (m.flicker ?? 0) <= 0.15 ? "low" : "high",
+          good: (m.flicker ?? 0) <= 0.15,
+        })}
+        {stat("Decode drops", String(m.decodeDrops))}
+        {stat("Song gate", String(m.gate.rows))}
+        {stat("False pass", String(m.gate.falsePass), { text: m.gate.falsePass === 0 ? "clean" : "check", good: m.gate.falsePass === 0 })}
+      </div>
+      {m.gate.acted > 0 && (
+        <p className="mt-3 text-xs" style={{ color: "var(--vs-muted)" }}>
+          {m.gate.acted} passthrough translation{m.gate.acted === 1 ? "" : "s"} during songs
+        </p>
+      )}
+    </section>
   );
 }
 
