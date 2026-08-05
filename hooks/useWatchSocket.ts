@@ -267,7 +267,12 @@ export function useWatchSocket({
             if (wsMessageTimestampsRef.current!.length > 200) wsMessageTimestampsRef.current!.shift();
             saveMetrics();
 
-            if (!activeSongRef.current) speak(entry.target_text);
+            // Speak finals unless a song is presenting — EXCEPT passthrough
+            // finals (the leader talking over a song slide), which are spoken
+            // even during song mode since the listener still needs them.
+            if (!activeSongRef.current || (msg as { passthrough?: boolean }).passthrough) {
+              speak(entry.target_text);
+            }
           }
 
           if (msg.type === "error") {
