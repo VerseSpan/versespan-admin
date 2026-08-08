@@ -45,7 +45,8 @@ export const GET = adminRoute(async () => {
     session: { id: s.id, churchId: s.church_id, startedAt: s.started_at, durationMin },
     finals,
     capHitPct: finals ? Math.round((capHits / finals) * 100) : 0,
-    flicker: a.flicker, // avg live_revision_rate (0 = no flicker, 1 = every pass rewrote)
+    flicker: a.flicker == null ? null : Number(a.flicker), // avg live_revision_rate (0=none, 1=every pass rewrote); numeric → string from driver
+
     decodeDrops: Number((drops[0] as { n: number }).n) || 0,
     gate: {
       rows: Number(g.gate_rows) || 0,

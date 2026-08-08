@@ -266,9 +266,9 @@ function MonitorCard({ m }: { m: MonitorSummary }) {
       <div className="grid grid-cols-3 gap-4">
         {stat("Sentences", String(m.finals))}
         {stat("Run-ons", `${m.capHitPct}%`, { text: m.capHitPct <= 20 ? "good" : "high", good: m.capHitPct <= 20 })}
-        {stat("Flicker", m.flicker == null ? "—" : m.flicker.toFixed(2), {
-          text: (m.flicker ?? 0) <= 0.15 ? "low" : "high",
-          good: (m.flicker ?? 0) <= 0.15,
+        {stat("Flicker", m.flicker == null ? "—" : Number(m.flicker).toFixed(2), {
+          text: Number(m.flicker ?? 0) <= 0.15 ? "low" : "high",
+          good: Number(m.flicker ?? 0) <= 0.15,
         })}
         {stat("Decode drops", String(m.decodeDrops))}
         {stat("Song gate", String(m.gate.rows))}
