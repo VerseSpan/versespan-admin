@@ -31,6 +31,11 @@ export interface TranslationMessage {
   confidence?: number;
   timestamp?: string;
   message?: string;
+  // Sentence-assembler / Stage C fields
+  utterance_id?: string;
+  status?: string;
+  revision?: number;
+  llm_revised?: boolean; // Stage C: swap this final's text in place, don't append
   session_id?: string;
   active_clients?: number;
   count?: number;
@@ -106,6 +111,7 @@ interface Store {
   updateSession: (id: string, updates: Partial<Session>) => void;
   setSessions: (sessions: Session[]) => void;
   addTranslation: (sessionId: string, translation: TranslationMessage) => void;
+  reviseTranslation: (sessionId: string, utteranceId: string, targetText: string) => void;
   setTranslations: (sessionId: string, translations: TranslationMessage[]) => void;
   setActiveSong: (sessionId: string, song: ActiveSong | null) => void;
 
@@ -139,6 +145,22 @@ export const useStore = create<Store>((set: (partial: Partial<Store> | ((state: 
               ...s,
               translations: [translation, ...(s.translations || [])].slice(0, 100), // Keep last 100
               translationCount: (s.translationCount || 0) + 1,
+            }
+          : s
+      ),
+    })),
+
+  // Stage C: replace a final's text in place by utterance_id (Qwen revision of
+  // an opus-mt final already shown). No count bump — it's the same utterance.
+  reviseTranslation: (sessionId: string, utteranceId: string, targetText: string) =>
+    set((state: Store) => ({
+      sessions: state.sessions.map((s: Session) =>
+        s.id === sessionId
+          ? {
+              ...s,
+              translations: (s.translations || []).map((t) =>
+                t.utterance_id === utteranceId ? { ...t, target_text: targetText } : t
+              ),
             }
           : s
       ),

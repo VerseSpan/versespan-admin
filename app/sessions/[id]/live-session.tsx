@@ -44,6 +44,7 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
   const session = useStore((state) => state.sessions.find((s) => s.id === sessionId));
   const translations = session?.translations || [];
   const addTranslation = useStore((state) => state.addTranslation);
+  const reviseTranslation = useStore((state) => state.reviseTranslation);
   const setTranslations = useStore((state) => state.setTranslations);
   const setActiveSong = useStore((state) => state.setActiveSong);
   const activeSong = session?.activeSong;
@@ -58,7 +59,12 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
       onTranslation: (message: TranslationMessage) => {
         // Admin view shows the authoritative record only — partials (forming
         // sentences, ~1/s during speech) are a viewer-UI concern
-        if ((message as { status?: string }).status === "partial") return;
+        if (message.status === "partial") return;
+        // Stage C revision: swap the opus-mt final's text in place, don't append
+        if (message.llm_revised && message.utterance_id) {
+          reviseTranslation(sessionId, message.utterance_id, message.target_text || "");
+          return;
+        }
         // Add translation to store so it persists across navigation
         addTranslation(sessionId, message);
       },

@@ -191,6 +191,67 @@ describe('Zustand Store', () => {
     });
   });
 
+  describe('reviseTranslation (Stage C)', () => {
+    beforeEach(() => {
+      useStore.getState().addSession({
+        id: 'sess-1',
+        name: 'Test',
+        status: 'active',
+        startedAt: '2025-01-01T10:00:00Z',
+        connectedUsers: 0,
+        translationCount: 0,
+      });
+    });
+
+    it('swaps a final text in place by utterance_id', () => {
+      useStore.getState().addTranslation('sess-1', {
+        type: 'translation',
+        source_text: 'Hola mundo',
+        target_text: 'opus hello world',
+        utterance_id: 'utt-1',
+        status: 'final',
+      });
+
+      useStore.getState().reviseTranslation('sess-1', 'utt-1', 'LLM hello, world.');
+
+      const session = useStore.getState().sessions[0];
+      expect(session.translations).toHaveLength(1); // no new row — same utterance
+      expect(session.translations![0].target_text).toBe('LLM hello, world.');
+    });
+
+    it('does not touch other utterances or bump the count', () => {
+      useStore.getState().addTranslation('sess-1', {
+        type: 'translation',
+        target_text: 'first',
+        utterance_id: 'utt-1',
+      });
+      useStore.getState().addTranslation('sess-1', {
+        type: 'translation',
+        target_text: 'second',
+        utterance_id: 'utt-2',
+      });
+
+      useStore.getState().reviseTranslation('sess-1', 'utt-1', 'first revised');
+
+      const t = useStore.getState().sessions[0].translations!;
+      expect(t).toHaveLength(2);
+      expect(t.find((x) => x.utterance_id === 'utt-1')?.target_text).toBe('first revised');
+      expect(t.find((x) => x.utterance_id === 'utt-2')?.target_text).toBe('second');
+    });
+
+    it('is a no-op when the utterance_id is unknown', () => {
+      useStore.getState().addTranslation('sess-1', {
+        type: 'translation',
+        target_text: 'only',
+        utterance_id: 'utt-1',
+      });
+
+      useStore.getState().reviseTranslation('sess-1', 'utt-missing', 'ignored');
+
+      expect(useStore.getState().sessions[0].translations![0].target_text).toBe('only');
+    });
+  });
+
   describe('setActiveSong', () => {
     it('sets active song on a session', () => {
       useStore.getState().addSession({

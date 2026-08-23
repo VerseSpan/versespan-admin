@@ -6,6 +6,9 @@ export interface Translation {
   target_text: string;
   content_type: "speech" | "scripture" | "song";
   timestamp: string;
+  /** Set on live finals so a later Stage C (Qwen) revision can swap the text
+   *  in place by matching this id. Absent on history entries. */
+  utteranceId?: string;
 }
 
 /** A sentence still forming (sentence_assembler backend flag). Updated in place
@@ -238,6 +241,27 @@ export function useWatchSocket({
               return;
             }
 
+            // Stage C revision (llm_translation_act): the local LLM's improved
+            // translation of a final already on screen. Swap the text in place by
+            // utterance_id — the opus-mt final was already spoken, so we must NOT
+            // re-speak, re-count, or append. If the original isn't found (pruned
+            // past the 50-cap, or arrived out of order) drop it silently.
+            if (msg.status === "final" && msg.llm_revised && msg.utterance_id) {
+              setTranslations((prev) => {
+                for (let i = prev.length - 1; i >= 0; i--) {
+                  if (prev[i].utteranceId === msg.utterance_id) {
+                    const next = prev.slice();
+                    next[i] = { ...next[i], target_text: text };
+                    return next;
+                  }
+                }
+                return prev;
+              });
+              // Only touch the big current-line if no newer final has landed
+              if (lastFinalizedUtteranceRef.current === msg.utterance_id) setLastText(text);
+              return;
+            }
+
             // Final (status === "final", or no status — legacy backend / flag off).
             // ANY final clears the forming line: the backend flushes its pending
             // before emitting one, so whatever partial is on screen is stale even
@@ -256,6 +280,7 @@ export function useWatchSocket({
               target_text: text,
               content_type: msg.content_type || "speech",
               timestamp: msg.timestamp || new Date().toISOString(),
+              utteranceId: msg.utterance_id,
             };
             console.log(`[Watch] Translation received (${msg.content_type || "speech"}): "${msg.source_text}" → "${text}" | TTS lang: ${sessionTargetLangRef.current}`);
             setTranslations((prev) => [...prev.slice(-49), entry]);
