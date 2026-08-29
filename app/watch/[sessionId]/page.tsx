@@ -99,6 +99,9 @@ export default function WatchPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
 
   const [fontSize, setFontSize] = useState<"md" | "lg" | "xl">("lg");
+  // The sentence TTS is currently speaking — set when audio actually starts, so
+  // it stays in sync with the voice (which lags the displayed finals).
+  const [nowPlaying, setNowPlaying] = useState("");
   const [feedbackState, setFeedbackState] = useState<FeedbackState>("idle");
   const [form, setForm] = useState<FormValues>({
     ratingOverall: 0,
@@ -143,6 +146,7 @@ export default function WatchPage() {
     viewerIdRef,
     ttsLatenciesRef,
     saveMetrics,
+    onUtteranceStart: setNowPlaying,
   });
 
   const { status, translations, lastText, targetLang, presenting, pendingUtterance } = useWatchSocket({
@@ -282,12 +286,28 @@ export default function WatchPage() {
                 <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#C9A84C" }}>{t.liveTranslation}</span>
               </div>
 
-              {(pendingUtterance || lastText) && (
+              {(nowPlaying || pendingUtterance || lastText) && (
                 <div
                   className="px-5 py-4 flex-shrink-0"
                   style={{ background: "#111118", borderBottom: "1px solid #1E1E2A", borderLeft: "3px solid #C9A84C" }}
                 >
-                  {pendingUtterance ? (
+                  {ttsEnabled && audioUnlocked && nowPlaying ? (
+                    // Primary = the sentence you're HEARING (Qwen, synced to audio).
+                    // The live opus caption rides underneath as a smaller preview.
+                    <>
+                      <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "#C9A84C" }}>
+                        {t.nowPlaying}
+                      </span>
+                      <p className={`${fontSizeClass} font-semibold leading-snug transition-colors duration-300 mt-1`} style={{ color: "#F5F0E8" }}>
+                        {nowPlaying}
+                      </p>
+                      {pendingUtterance && (
+                        <p className={`${sourceSizeClass} italic leading-snug mt-2`} style={{ color: "#3A3A4A" }}>
+                          {pendingUtterance.text}
+                        </p>
+                      )}
+                    </>
+                  ) : pendingUtterance ? (
                     <PendingLine key={pendingUtterance.utteranceId} text={pendingUtterance.text} fontSizeClass={fontSizeClass} />
                   ) : (
                     <p className={`${fontSizeClass} font-semibold leading-snug transition-colors duration-300`} style={{ color: "#F5F0E8" }}>

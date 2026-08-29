@@ -7,6 +7,7 @@ export function useTTS({
   viewerIdRef,
   ttsLatenciesRef,
   saveMetrics,
+  onUtteranceStart,
 }: {
   sessionId: string | undefined;
   apiUrl: string;
@@ -14,6 +15,10 @@ export function useTTS({
   viewerIdRef: RefObject<string>;
   ttsLatenciesRef: RefObject<number[]>;
   saveMetrics: () => void;
+  /** Fires the moment a queued sentence actually starts PLAYING (not when it
+   *  was queued) — lets the UI show a "Now Playing" line synced to the audio,
+   *  which lags the displayed finals by the synthesis + queue time. */
+  onUtteranceStart?: (text: string) => void;
 }) {
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
@@ -25,9 +30,11 @@ export function useTTS({
   const ttsAbortRef = useRef<AbortController | null>(null);
   const ttsQueueRef = useRef<string[]>([]);
   const ttsProcessingRef = useRef(false);
+  const onUtteranceStartRef = useRef<((text: string) => void) | undefined>(onUtteranceStart);
 
   useEffect(() => { ttsEnabledRef.current = ttsEnabled; }, [ttsEnabled]);
   useEffect(() => { audioUnlockedRef.current = audioUnlocked; }, [audioUnlocked]);
+  useEffect(() => { onUtteranceStartRef.current = onUtteranceStart; }, [onUtteranceStart]);
 
   const speak = useCallback(async (text: string) => {
     if (!ttsEnabledRef.current || !audioUnlockedRef.current || !text.trim()) return;
@@ -78,6 +85,7 @@ export function useTTS({
           source.connect(ctx.destination);
           source.onended = () => resolve();
           source.start();
+          onUtteranceStartRef.current?.(item); // this sentence is now audible
           currentSourceRef.current = source;
           if (!prefetch && ttsQueueRef.current.length > 0) {
             prefetch = fetchAudio(ttsQueueRef.current[0]);
