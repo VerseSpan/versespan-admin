@@ -45,6 +45,12 @@ export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "en
  *  final (e.g. its batch was hallucination-filtered) and must not hang. */
 const PENDING_ORPHAN_TTL_MS = 10_000;
 
+/** When llm_translation_act is on, the backend marks the opus-mt final
+ *  `llm_pending` and a Qwen revision follows ~1s later. We hold TTS this long
+ *  for that revision (covers the observed p90 ~2.1s) so spoken audio matches the
+ *  settled Qwen text, then speak the opus-mt floor rather than leave silence. */
+const LLM_SPEAK_WAIT_MS = 2500;
+
 export function useWatchSocket({
   sessionId,
   speak,
@@ -81,6 +87,10 @@ export function useWatchSocket({
   const sessionEndedRef = useRef(false);
   const idCounter = useRef(0);
   const lastFinalizedUtteranceRef = useRef<string | null>(null);
+  // utterance_id -> held TTS. When a final is `llm_pending` we defer its audio
+  // here until the Qwen revision arrives (speak that) or the timer fires (speak
+  // the opus-mt floor). Guarantees each utterance is spoken exactly once.
+  const pendingSpeakRef = useRef<Map<string, { timer: ReturnType<typeof setTimeout>; opusText: string }>>(new Map());
 
   // Every partial replaces pendingUtterance with a fresh object, so this timer
   // resets on each update and only fires for a line nothing will ever finalize
@@ -92,6 +102,10 @@ export function useWatchSocket({
 
   useEffect(() => {
     if (!sessionId) return;
+
+    // Stable singleton (mutated, never reassigned) — capture for the cleanup so
+    // it clears whatever TTS holds exist at teardown, not a stale snapshot.
+    const heldSpeech = pendingSpeakRef.current;
 
     const wsApiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const wsUrl = wsApiUrl.replace("http://", "ws://").replace("https://", "wss://");
@@ -243,9 +257,11 @@ export function useWatchSocket({
 
             // Stage C revision (llm_translation_act): the local LLM's improved
             // translation of a final already on screen. Swap the text in place by
-            // utterance_id — the opus-mt final was already spoken, so we must NOT
-            // re-speak, re-count, or append. If the original isn't found (pruned
-            // past the 50-cap, or arrived out of order) drop it silently.
+            // utterance_id (never append or re-count). If TTS was held for this
+            // utterance (llm_pending), speak the refined text now and cancel the
+            // fallback; if the hold already timed out and spoke opus-mt, the entry
+            // is gone so we do NOT re-speak. If the original line isn't found
+            // (pruned past the 50-cap, or out of order) the swap is dropped.
             if (msg.status === "final" && msg.llm_revised && msg.utterance_id) {
               setTranslations((prev) => {
                 for (let i = prev.length - 1; i >= 0; i--) {
@@ -259,6 +275,12 @@ export function useWatchSocket({
               });
               // Only touch the big current-line if no newer final has landed
               if (lastFinalizedUtteranceRef.current === msg.utterance_id) setLastText(text);
+              const held = pendingSpeakRef.current.get(msg.utterance_id);
+              if (held) {
+                clearTimeout(held.timer);
+                pendingSpeakRef.current.delete(msg.utterance_id);
+                speak(text); // speak the refined Qwen version instead of opus-mt
+              }
               return;
             }
 
@@ -296,7 +318,22 @@ export function useWatchSocket({
             // finals (the leader talking over a song slide), which are spoken
             // even during song mode since the listener still needs them.
             if (!activeSongRef.current || (msg as { passthrough?: boolean }).passthrough) {
-              speak(entry.target_text);
+              if (msg.llm_pending && msg.utterance_id) {
+                // Hold audio for the incoming Qwen revision so the spoken text
+                // matches what settles on screen; fall back to this opus-mt text
+                // if the revision doesn't arrive in time.
+                const uid = msg.utterance_id as string;
+                const opusText = entry.target_text;
+                const existing = pendingSpeakRef.current.get(uid);
+                if (existing) clearTimeout(existing.timer);
+                const timer = setTimeout(() => {
+                  pendingSpeakRef.current.delete(uid);
+                  speak(opusText);
+                }, LLM_SPEAK_WAIT_MS);
+                pendingSpeakRef.current.set(uid, { timer, opusText });
+              } else {
+                speak(entry.target_text);
+              }
             }
           }
 
@@ -336,6 +373,8 @@ export function useWatchSocket({
     return () => {
       dead = true;
       clearTimeout(reconnectTimeout);
+      heldSpeech.forEach(({ timer }) => clearTimeout(timer));
+      heldSpeech.clear();
       wsRef.current?.close();
     };
   }, [sessionId, speak, stopTTS, saveMetrics, sessionTargetLangRef, connectionDropsRef, totalTranslationsRef, wsMessageTimestampsRef, firstTranslationTimeRef, lastDisconnectCodeRef]);
