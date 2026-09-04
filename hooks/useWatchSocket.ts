@@ -51,6 +51,14 @@ const PENDING_ORPHAN_TTL_MS = 10_000;
  *  settled Qwen text, then speak the opus-mt floor rather than leave silence. */
 const LLM_SPEAK_WAIT_MS = 2500;
 
+/** Watchdog: ping this often. The server answers every ping with a pong and
+ *  also sends a keepalive ping when idle, so SOME message should arrive well
+ *  within WS_STALE_MS. If none does, the socket went half-open (a silent
+ *  deploy/network drop with no close frame) — force a reconnect, since onclose
+ *  never fires for a half-open connection and the viewer would hang forever. */
+const WS_PING_MS = 15_000;
+const WS_STALE_MS = 45_000;
+
 export function useWatchSocket({
   sessionId,
   speak,
@@ -87,6 +95,9 @@ export function useWatchSocket({
   const sessionEndedRef = useRef(false);
   const idCounter = useRef(0);
   const lastFinalizedUtteranceRef = useRef<string | null>(null);
+  // Timestamp of the last message received on the socket — the watchdog uses it
+  // to detect a half-open connection (no traffic, including pongs) and reconnect.
+  const lastMessageAtRef = useRef<number>(0);
   // utterance_id -> held TTS. When a final is `llm_pending` we defer its audio
   // here until the Qwen revision arrives (speak that) or the timer fires (speak
   // the opus-mt floor). Guarantees each utterance is spoken exactly once.
@@ -124,18 +135,39 @@ export function useWatchSocket({
       ws.onopen = () => {
         console.log(`[Watch] Connected (drops so far: ${connectionDropsRef.current})`);
         setStatus("connected");
-        const heartbeat = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
-        }, 20000);
-        ws.addEventListener("close", () => clearInterval(heartbeat));
+        lastMessageAtRef.current = Date.now();
+        const watchdog = setInterval(() => {
+          if (ws.readyState !== WebSocket.OPEN) return;
+          // Half-open guard: no message (not even our ping's pong) for WS_STALE_MS
+          // means the socket died silently — close it so onclose fires and we
+          // reconnect. Otherwise send the keepalive ping.
+          if (Date.now() - lastMessageAtRef.current > WS_STALE_MS) {
+            console.warn("[Watch] Connection stale — forcing reconnect");
+            try { ws.close(); } catch {}
+            return;
+          }
+          ws.send(JSON.stringify({ type: "ping" }));
+        }, WS_PING_MS);
+        ws.addEventListener("close", () => clearInterval(watchdog));
       };
 
       ws.onmessage = (event) => {
+        lastMessageAtRef.current = Date.now(); // any traffic keeps the watchdog satisfied
         try {
           const msg = JSON.parse(event.data);
 
           if (msg.type === "ping") {
             ws.send(JSON.stringify({ type: "ping" }));
+            return;
+          }
+
+          if (msg.type === "pong") return; // watchdog keepalive ack — nothing else to do
+
+          if (msg.type === "server_restart") {
+            // Backend is going down for a deploy; reconnect proactively instead of
+            // waiting for a close frame that a half-open socket may never deliver.
+            console.log("[Watch] Server restarting — reconnecting");
+            try { ws.close(); } catch {}
             return;
           }
 
