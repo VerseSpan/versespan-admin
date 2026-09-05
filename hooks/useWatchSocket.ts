@@ -46,10 +46,14 @@ export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "en
 const PENDING_ORPHAN_TTL_MS = 10_000;
 
 /** When llm_translation_act is on, the backend marks the opus-mt final
- *  `llm_pending` and a Qwen revision follows ~1s later. We hold TTS this long
- *  for that revision (covers the observed p90 ~2.1s) so spoken audio matches the
- *  settled Qwen text, then speak the opus-mt floor rather than leave silence. */
-const LLM_SPEAK_WAIT_MS = 2500;
+ *  `llm_pending` and a Qwen revision follows. We hold TTS this long for that
+ *  revision so spoken audio matches the settled Qwen text, then speak the
+ *  opus-mt floor rather than leave silence. Set above the Qwen latency tail
+ *  (service p99 ~3.0s, max ~3.5s) PLUS the WS/scheduling overhead between the
+ *  frontend receiving the opus final and the revision — at 2.5s, ~2.2s revisions
+ *  on long sentences slipped past and spoke opus ("see" vs Qwen's "watch"). Qwen
+ *  failures are ~0, so the only cost of a longer hold is silence on those. */
+const LLM_SPEAK_WAIT_MS = 3500;
 
 /** Watchdog: ping this often. The server answers every ping with a pong and
  *  also sends a keepalive ping when idle, so SOME message should arrive well
