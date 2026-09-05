@@ -23,11 +23,15 @@ function runWatch(msgs: Msg[]) {
   let lastText = "";
   let pendingUtterance: { utteranceId: string; text: string } | null = null;
   let lastFinalized: string | null = null;
-  const held = new Map<string, { opusText: string }>(); // timer omitted; we drive it explicitly
+  // Ordered TTS queue: slots in finalization order; text=null = awaiting revision.
+  const queue: Array<{ uid?: string; text: string | null; opusText: string }> = [];
   const spoken: string[] = [];
   let idCounter = 0;
 
   const speak = (t: string) => spoken.push(t);
+  const drain = () => {
+    while (queue.length && queue[0].text !== null) speak(queue.shift()!.text!);
+  };
 
   for (const msg of msgs) {
     const text = msg.target_text;
@@ -36,7 +40,7 @@ function runWatch(msgs: Msg[]) {
       pendingUtterance = { utteranceId: msg.utterance_id, text };
       continue;
     }
-    // revision
+    // revision — fill this utterance's slot in place, then drain in order
     if (msg.status === "final" && msg.llm_revised && msg.utterance_id) {
       for (let i = translations.length - 1; i >= 0; i--) {
         if (translations[i].utteranceId === msg.utterance_id) {
@@ -46,9 +50,10 @@ function runWatch(msgs: Msg[]) {
         }
       }
       if (lastFinalized === msg.utterance_id) lastText = text;
-      if (held.has(msg.utterance_id)) {
-        held.delete(msg.utterance_id);
-        speak(text);
+      const slot = queue.find((s) => s.uid === msg.utterance_id && s.text === null);
+      if (slot) {
+        slot.text = text;
+        drain();
       }
       continue;
     }
@@ -59,13 +64,15 @@ function runWatch(msgs: Msg[]) {
     translations = [...translations.slice(-49), entry];
     lastText = entry.target_text;
     if (msg.llm_pending && msg.utterance_id) {
-      held.set(msg.utterance_id, { opusText: entry.target_text }); // deferred; timer would speak opus
+      queue.push({ uid: msg.utterance_id, text: null, opusText: entry.target_text }); // deferred
     } else {
-      speak(entry.target_text);
+      queue.push({ uid: msg.utterance_id, text: entry.target_text, opusText: entry.target_text });
+      drain();
     }
   }
-  // fire any still-held timers (Qwen never arrived) -> speak opus fallback
-  for (const [, v] of held) speak(v.opusText);
+  // fire any still-pending safety timers (Qwen never arrived) -> opus floor, in order
+  for (const s of queue) if (s.text === null) s.text = s.opusText;
+  drain();
   return { translations, lastText, pendingUtterance, spoken };
 }
 
@@ -115,5 +122,29 @@ describe("watch reducer: display vs audio for Stage C acting", () => {
     expect(s.translations.find((t) => t.utteranceId === "u2")!.target_text).toBe("QWEN two");
     expect(s.lastText).toBe("QWEN two");
     expect(s.spoken).toEqual(["QWEN one", "QWEN two"]);
+  });
+
+  it("out-of-order revisions: u2's Qwen returns BEFORE u1's — audio stays in order", () => {
+    // Regression: concurrent Qwen tasks finish out of order. u1 & u2 both defer;
+    // u2's revision arrives first, but audio must still be [u1, u2].
+    const s = runWatch([
+      F("u1", "OPUS one"),
+      F("u2", "OPUS two"),
+      R("u2", "QWEN two"), // u2 ready first — must NOT speak yet (u1 still pending)
+      R("u1", "QWEN one"), // now u1 ready — drains u1 then u2
+    ]);
+    expect(s.spoken).toEqual(["QWEN one", "QWEN two"]);
+  });
+
+  it("out-of-order with a stuck earlier slot: u1 never revises, its timeout releases both in order", () => {
+    // u1's revision is lost; u2's arrives. Nothing speaks until u1's safety
+    // timeout fires (end-of-stream here), then both drain in order (opus for u1).
+    const s = runWatch([
+      F("u1", "OPUS one"),
+      F("u2", "OPUS two"),
+      R("u2", "QWEN two"),
+      // no R("u1") — end-of-stream timeout falls u1 back to opus
+    ]);
+    expect(s.spoken).toEqual(["OPUS one", "QWEN two"]);
   });
 });

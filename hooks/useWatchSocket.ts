@@ -101,10 +101,14 @@ export function useWatchSocket({
   // Timestamp of the last message received on the socket — the watchdog uses it
   // to detect a half-open connection (no traffic, including pongs) and reconnect.
   const lastMessageAtRef = useRef<number>(0);
-  // utterance_id -> held TTS. When a final is `llm_pending` we defer its audio
-  // here until the Qwen revision arrives (speak that) or the timer fires (speak
-  // the opus-mt floor). Guarantees each utterance is spoken exactly once.
-  const pendingSpeakRef = useRef<Map<string, { timer: ReturnType<typeof setTimeout>; opusText: string }>>(new Map());
+  // Ordered TTS queue — every speakable final gets a slot in finalization order.
+  // A slot with text=null is a `llm_pending` final awaiting its Qwen revision
+  // (or the safety timeout → opus floor); a slot with text set is ready. We only
+  // ever speak from the FRONT, so a later sentence never jumps ahead of an
+  // earlier one whose Qwen is still in flight (Qwen tasks finish out of order).
+  const speakQueueRef = useRef<
+    Array<{ uid?: string; text: string | null; opusText: string; timer: ReturnType<typeof setTimeout> | null }>
+  >([]);
 
   // Every partial replaces pendingUtterance with a fresh object, so this timer
   // resets on each update and only fires for a line nothing will ever finalize
@@ -118,8 +122,20 @@ export function useWatchSocket({
     if (!sessionId) return;
 
     // Stable singleton (mutated, never reassigned) — capture for the cleanup so
-    // it clears whatever TTS holds exist at teardown, not a stale snapshot.
-    const heldSpeech = pendingSpeakRef.current;
+    // it clears whatever TTS timers exist at teardown, not a stale snapshot.
+    const speakQueue = speakQueueRef.current;
+
+    // Speak ready slots strictly from the front, so audio stays in finalization
+    // order even when a later sentence's Qwen revision arrives before an earlier
+    // one's. Stops at the first not-yet-ready slot.
+    const drainSpeak = () => {
+      const q = speakQueueRef.current;
+      while (q.length && q[0].text !== null) {
+        const slot = q.shift()!;
+        if (slot.timer) clearTimeout(slot.timer);
+        speak(slot.text!);
+      }
+    };
 
     const wsApiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const wsUrl = wsApiUrl.replace("http://", "ws://").replace("https://", "wss://");
@@ -292,11 +308,11 @@ export function useWatchSocket({
 
             // Stage C revision (llm_translation_act): the local LLM's improved
             // translation of a final already on screen. Swap the text in place by
-            // utterance_id (never append or re-count). If TTS was held for this
-            // utterance (llm_pending), speak the refined text now and cancel the
-            // fallback; if the hold already timed out and spoke opus-mt, the entry
-            // is gone so we do NOT re-speak. If the original line isn't found
-            // (pruned past the 50-cap, or out of order) the swap is dropped.
+            // utterance_id (never append or re-count), then fill this utterance's
+            // TTS slot with the refined text and drain — the ordered queue speaks
+            // it once every earlier slot has been spoken (so out-of-order Qwen
+            // completions never reorder the audio). If the slot is gone (already
+            // spoken, or the line was pruned) the revision only updates the text.
             if (msg.status === "final" && msg.llm_revised && msg.utterance_id) {
               setTranslations((prev) => {
                 for (let i = prev.length - 1; i >= 0; i--) {
@@ -310,11 +326,10 @@ export function useWatchSocket({
               });
               // Only touch the big current-line if no newer final has landed
               if (lastFinalizedUtteranceRef.current === msg.utterance_id) setLastText(text);
-              const held = pendingSpeakRef.current.get(msg.utterance_id);
-              if (held) {
-                clearTimeout(held.timer);
-                pendingSpeakRef.current.delete(msg.utterance_id);
-                speak(text); // speak the refined Qwen version instead of opus-mt
+              const slot = speakQueueRef.current.find((s) => s.uid === msg.utterance_id && s.text === null);
+              if (slot) {
+                slot.text = text; // refined Qwen (or opus fallback carried by llm_failed)
+                drainSpeak();
               }
               return;
             }
@@ -353,21 +368,31 @@ export function useWatchSocket({
             // finals (the leader talking over a song slide), which are spoken
             // even during song mode since the listener still needs them.
             if (!activeSongRef.current || (msg as { passthrough?: boolean }).passthrough) {
+              // Every speakable final takes a slot in the ordered queue so audio
+              // stays in finalization order.
               if (msg.llm_pending && msg.utterance_id) {
-                // Hold audio for the incoming Qwen revision so the spoken text
-                // matches what settles on screen; fall back to this opus-mt text
-                // if the revision doesn't arrive in time.
+                // Qwen revision is coming — reserve a not-ready slot; the revision
+                // fills it, or the safety timer falls back to this opus-mt text so
+                // a lost revision never wedges the queue.
                 const uid = msg.utterance_id as string;
                 const opusText = entry.target_text;
-                const existing = pendingSpeakRef.current.get(uid);
-                if (existing) clearTimeout(existing.timer);
                 const timer = setTimeout(() => {
-                  pendingSpeakRef.current.delete(uid);
-                  speak(opusText);
+                  const s = speakQueueRef.current.find((x) => x.uid === uid && x.text === null);
+                  if (s) {
+                    s.text = s.opusText;
+                    drainSpeak();
+                  }
                 }, LLM_SPEAK_WAIT_MS);
-                pendingSpeakRef.current.set(uid, { timer, opusText });
+                speakQueueRef.current.push({ uid, text: null, opusText, timer });
               } else {
-                speak(entry.target_text);
+                // Non-deferred final (no Qwen revision expected) — ready immediately.
+                speakQueueRef.current.push({
+                  uid: msg.utterance_id,
+                  text: entry.target_text,
+                  opusText: entry.target_text,
+                  timer: null,
+                });
+                drainSpeak();
               }
             }
           }
@@ -408,8 +433,8 @@ export function useWatchSocket({
     return () => {
       dead = true;
       clearTimeout(reconnectTimeout);
-      heldSpeech.forEach(({ timer }) => clearTimeout(timer));
-      heldSpeech.clear();
+      speakQueue.forEach((s) => s.timer && clearTimeout(s.timer));
+      speakQueue.length = 0;
       wsRef.current?.close();
     };
   }, [sessionId, speak, stopTTS, saveMetrics, sessionTargetLangRef, connectionDropsRef, totalTranslationsRef, wsMessageTimestampsRef, firstTranslationTimeRef, lastDisconnectCodeRef]);
