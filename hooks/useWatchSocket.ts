@@ -397,12 +397,25 @@ export function useWatchSocket({
             }
           }
 
+          // A session ending is a normal outcome, so it has its own message type.
+          if (msg.type === "session_ended") {
+            console.log(`[Watch] Session ended (${msg.reason ?? "unspecified"})`);
+            sessionEndedRef.current = true;
+            setStatus("ended");
+            ws.close();
+          }
+
           if (msg.type === "error") {
+            // Legacy: the backend used to send session end as an error, so this
+            // matched on the literal message text — which would have broken
+            // silently if anyone reworded it. Kept only until every client is on
+            // `session_ended`; sessionEndedRef makes the duplicate a no-op.
             if (msg.error === "Session has ended") {
-              console.log("[Watch] Session ended by admin");
-              sessionEndedRef.current = true;
-              setStatus("ended");
-              ws.close();
+              if (!sessionEndedRef.current) {
+                sessionEndedRef.current = true;
+                setStatus("ended");
+                ws.close();
+              }
             } else {
               console.error("[Watch] Server error:", msg.error);
             }

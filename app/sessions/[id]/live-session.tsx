@@ -35,6 +35,9 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
   const [streaming, setStreaming] = useState(false);
   const [activeClients, setActiveClients] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // Ending a session is routine, so it gets its own neutral state instead of
+  // being funnelled through `error` and rendered as a red fault box.
+  const [sessionEnded, setSessionEnded] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [isStartingAudio, setIsStartingAudio] = useState(false);
   const [modelsReady, setModelsReady] = useState(false);
@@ -79,6 +82,12 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
       onError: (error: string) => {
         setError(error);
         console.error('[LiveSession] Error:', error);
+      },
+      onSessionEnded: (reason?: string) => {
+        console.log('[LiveSession] Session ended:', reason ?? 'unspecified');
+        setSessionEnded(true);
+        setError(null);   // clear any stale fault so the end reads clean
+        setStreaming(false);
       },
       onConnectionChange: (connected: boolean) => {
         setConnected(connected);
@@ -264,7 +273,14 @@ export function LiveSession({ sessionId, sessionName, deviceId, startedAt, sourc
       </div>
 
       {/* Error Alert */}
-      {error && (
+      {sessionEnded && (
+        <div className="bg-gray-50 border border-gray-200 rounded p-4 text-gray-700 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-gray-400" aria-hidden />
+          This session has ended.
+        </div>
+      )}
+
+      {error && !sessionEnded && (
         <div className="bg-red-50 border border-red-200 rounded p-4 text-red-800">
           <strong>Error:</strong> {error}
         </div>

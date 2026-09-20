@@ -11,6 +11,8 @@ export interface TranslationClientConfig {
   onTranslation?: (message: TranslationMessage) => void;
   onStatus?: (message: TranslationMessage) => void;
   onError?: (error: string) => void;
+  /** A session ending normally — NOT an error. */
+  onSessionEnded?: (reason?: string) => void;
   onConnectionChange?: (connected: boolean) => void;
   onStreamingResumed?: () => void;
   onSongStarted?: (message: TranslationMessage) => void;
@@ -21,6 +23,7 @@ export interface TranslationClientConfig {
 
 export class TranslationClient {
   private ws: WebSocket | null = null;
+  private sessionEnded = false;
   private audioContext: AudioContext | null = null;
   private audioWorkletNode: AudioWorkletNode | null = null;
   private audioStream: MediaStream | null = null;
@@ -142,7 +145,23 @@ export class TranslationClient {
       case 'status':
         this.config.onStatus?.(message);
         break;
+      case 'session_ended':
+        // Ending a session is routine, so it gets its own type rather than
+        // arriving as an error. Callers show a neutral state, not a red box.
+        this.sessionEnded = true;
+        this.config.onSessionEnded?.(message.reason);
+        break;
       case 'error':
+        // Legacy: the backend used to send session end as an error. Swallow that
+        // one case so a normal shutdown cannot surface as a fault. Remove once
+        // the backend stops emitting it.
+        if (message.error === 'Session has ended') {
+          if (!this.sessionEnded) {
+            this.sessionEnded = true;
+            this.config.onSessionEnded?.('ended_by_admin');
+          }
+          break;
+        }
         this.config.onError?.(message.error || 'Unknown error');
         break;
       case 'pong':
