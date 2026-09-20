@@ -46,6 +46,14 @@ export default function ImportFromProPresenterPage() {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<"browse" | "edit">("browse");
+  /**
+   * What the page is currently waiting on, or null. ProPresenter is reached
+   * over the church's own network through the bridge, so these calls are
+   * genuinely slow — and every one of them used to run with no visible state
+   * and a `catch {}`, which made a FAILURE look exactly like a slow call.
+   * Silence was the bug: "it hangs" was often "it already failed".
+   */
+  const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
     api.proPresenterStatus()
@@ -72,36 +80,52 @@ export default function ImportFromProPresenterPage() {
   }, []);
 
   async function loadLibraries() {
+    setBusy("Loading libraries from ProPresenter...");
+    setError(null);
     try {
       const data = await api.proPresenterLibraries() as { libraries: SourceItem[] };
       setLibraries(data.libraries || []);
       if (data.libraries?.length === 1) {
         setSelectedId(data.libraries[0].id);
-        loadPresentations("libraries", data.libraries[0].id);
+        await loadPresentations("libraries", data.libraries[0].id);
       }
-    } catch {}
+    } catch (e) {
+      setError(`Couldn't reach ProPresenter: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function loadPlaylists() {
+    setBusy("Loading playlists from ProPresenter...");
+    setError(null);
     try {
       const data = await api.proPresenterPlaylists() as { playlists: SourceItem[] };
       setPlaylists(data.playlists || []);
-    } catch {}
+    } catch (e) {
+      setError(`Couldn't reach ProPresenter: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function loadPresentations(src: Source, id: string) {
     setSelectedId(id);
     setPresentations([]);
     setSelectedPres(null);
+    if (!id) return;
+    setBusy("Loading songs...");
+    setError(null);
     try {
-      if (src === "libraries") {
-        const data = await api.proPresenterLibrary(id) as { presentations: Presentation[] };
-        setPresentations(data.presentations || []);
-      } else {
-        const data = await api.proPresenterPlaylist(id) as { presentations: Presentation[] };
-        setPresentations(data.presentations || []);
-      }
-    } catch {}
+      const data = src === "libraries"
+        ? await api.proPresenterLibrary(id) as { presentations: Presentation[] }
+        : await api.proPresenterPlaylist(id) as { presentations: Presentation[] };
+      setPresentations(data.presentations || []);
+    } catch (e) {
+      setError(`Couldn't load songs: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(null);
+    }
   }
 
   function switchSource(s: Source) {
@@ -127,6 +151,7 @@ export default function ImportFromProPresenterPage() {
   async function fetchLyrics() {
     if (!selectedPres) return;
     setFetchingLyrics(true);
+    setBusy("Fetching lyrics from the active slide...");
     try {
       const data = await api.proPresenterPresentation(selectedPres.uuid) as { slide_text: string[]; detected_lang?: string };
       const texts: string[] = data.slide_text || [];
@@ -151,6 +176,7 @@ export default function ImportFromProPresenterPage() {
       setError("Could not fetch lyrics — paste manually below.");
     } finally {
       setFetchingLyrics(false);
+      setBusy(null);
     }
   }
 
@@ -158,6 +184,7 @@ export default function ImportFromProPresenterPage() {
     const toTranslate = sections.filter(s => s.texts[sourceLang]?.trim());
     if (toTranslate.length === 0) return;
     setTranslating(true);
+    setBusy(`Translating ${toTranslate.length} section${toTranslate.length === 1 ? "" : "s"} to ${getLangName(targetLang)}...`);
     setError(null);
     try {
       const res = await api.translateLyrics(toTranslate.map(s => s.texts[sourceLang]), sourceLang, targetLang);
@@ -173,6 +200,7 @@ export default function ImportFromProPresenterPage() {
       setError("Translation failed — paste target lyrics manually.");
     } finally {
       setTranslating(false);
+      setBusy(null);
     }
   }
 
@@ -201,6 +229,7 @@ export default function ImportFromProPresenterPage() {
     if (!title.trim()) { setError("Title is required"); return; }
     if (sections.every(s => !s.texts[sourceLang]?.trim())) { setError("At least one section needs source lyrics"); return; }
     setImporting(true);
+    setBusy("Saving song...");
     setError(null);
     try {
       const titles: Record<string, string> = { [sourceLang]: title.trim() };
@@ -221,6 +250,7 @@ export default function ImportFromProPresenterPage() {
       setError((err as Error).message || "Import failed");
     } finally {
       setImporting(false);
+      setBusy(null);
     }
   }
 
@@ -260,6 +290,24 @@ export default function ImportFromProPresenterPage() {
           </button>
         </div>
 
+      {busy && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="bg-white border border-gray-200 rounded-lg overflow-hidden"
+        >
+          <style>{PP_BAR_CSS}</style>
+          <div className="h-1 bg-purple-100 overflow-hidden">
+            <div className="h-full w-1/3 bg-purple-500 pp-indeterminate" />
+          </div>
+          <div className="px-4 py-3 text-sm text-gray-700">{busy}</div>
+        </div>
+      )}
+
+        {error && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded text-red-800 text-sm">{error}</div>
+        )}
+
         <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 w-fit">
           {(["libraries", "playlists"] as Source[]).map((s) => (
             <button
@@ -294,7 +342,9 @@ export default function ImportFromProPresenterPage() {
 
         <div className="bg-white rounded-lg shadow overflow-hidden">
           {presentations.length === 0 ? (
-            <div className="px-6 py-12 text-center text-gray-400">{emptyHint}</div>
+            <div className="px-6 py-12 text-center text-gray-400">
+              {busy ? "Loading songs from ProPresenter..." : emptyHint}
+            </div>
           ) : (
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
@@ -335,6 +385,20 @@ export default function ImportFromProPresenterPage() {
           <button onClick={() => router.push("/songs")} className="text-gray-500 hover:text-gray-700 text-sm">Cancel</button>
         </div>
       </div>
+
+      {busy && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="bg-white border border-gray-200 rounded-lg overflow-hidden"
+        >
+          <style>{PP_BAR_CSS}</style>
+          <div className="h-1 bg-purple-100 overflow-hidden">
+            <div className="h-full w-1/3 bg-purple-500 pp-indeterminate" />
+          </div>
+          <div className="px-4 py-3 text-sm text-gray-700">{busy}</div>
+        </div>
+      )}
 
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded text-red-800 text-sm">{error}</div>
@@ -506,3 +570,16 @@ export default function ImportFromProPresenterPage() {
     </div>
   );
 }
+
+/* Indeterminate because the ProPresenter bridge reports no progress. A bar that
+   moves says "still working"; a fake percentage that stalls at 80% lies. */
+const PP_BAR_CSS = `
+@keyframes pp-indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+.pp-indeterminate { animation: pp-indeterminate 1.1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .pp-indeterminate { animation: none; width: 100%; opacity: .5; }
+}
+`;
