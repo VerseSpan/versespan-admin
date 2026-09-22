@@ -90,7 +90,6 @@ export default function SettingsPage() {
 
   const joinUrl = slug ? `${origin}/join/${slug}` : "";
   const qrDownloadRef = useRef<HTMLDivElement>(null);
-  const joinPreviewRef = useRef<HTMLDivElement>(null);
   const [recording, setRecording] = useState(false);
   const [recordPct, setRecordPct] = useState(0);
   const [videoNote, setVideoNote] = useState<string | null>(null);
@@ -149,10 +148,6 @@ export default function SettingsPage() {
     } finally {
       setRecording(false);
     }
-  }
-
-  function openFullScreen() {
-    joinPreviewRef.current?.requestFullscreen?.().catch(() => {});
   }
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
@@ -318,21 +313,20 @@ export default function SettingsPage() {
 
             {/* Live preview. Sized by its container, so this IS the 1920x1080
                 design rather than a separate small rendering of it. */}
-            <div ref={joinPreviewRef} className="rounded-lg overflow-hidden border border-gray-200 bg-black">
-              <JoinScreen url={joinUrl} churchName={churchName} langs={churchLanguages} fill />
+            {/* No `fill` here: that sets height:100% and the component uses
+                container-type:size, so against an auto-height parent every cqh
+                unit collapsed to nothing and the preview rendered as a bare
+                purple rectangle. Letting its own 16:9 aspect drive the height
+                is what makes this a true scale model of 1920x1080. */}
+            <div className="rounded-lg overflow-hidden border border-gray-200">
+              <JoinScreen url={joinUrl} churchName={churchName} langs={churchLanguages} />
             </div>
 
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={openFullScreen}
-                className="px-4 py-2 rounded bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition"
-              >
-                Show full screen
-              </button>
-              <button
                 onClick={downloadVideo}
                 disabled={recording}
-                className="px-4 py-2 rounded border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition disabled:opacity-50"
+                className="px-4 py-2 rounded bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition disabled:opacity-50"
               >
                 {recording ? `Recording ${recordPct}%…` : "Download video"}
               </button>
@@ -344,8 +338,8 @@ export default function SettingsPage() {
             )}
             {videoNote && <p className="text-xs text-amber-700">{videoNote}</p>}
             <p className="text-xs text-gray-500">
-              Full screen animates between {churchLanguages.length} language
-              {churchLanguages.length === 1 ? "" : "s"} — use it on a TV directly. The video is one full loop
+              The preview above animates between {churchLanguages.length} language
+              {churchLanguages.length === 1 ? "" : "s"}. The video is one full loop
               ({((churchLanguages.length * 3.8)).toFixed(1)}s) at 1920×1080, for ProPresenter or anywhere a
               file is needed; recording it takes about that long.
             </p>

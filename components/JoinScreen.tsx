@@ -13,7 +13,10 @@ import { QRCodeCanvas, QRCodeSVG } from "qrcode.react";
  *
  *  - Every size is a `cqh` percentage of the frame, so the design is identical
  *    in a small preview and on a 4K panel. Fixed pixels tuned against one
- *    viewport collapse on the other.
+ *    viewport collapse on the other. The flip side of container-type:size is
+ *    that the frame MUST get a real height — its own 16:9 aspect does that.
+ *    A `height:100%` against an auto-height parent collapses every cqh to zero
+ *    and renders nothing but the background gradient.
  *  - The instruction is 8cqh (86px at 1080). Comfortable reading distance is
  *    roughly cap-height x 150, so on a 65" screen that carries ~7m — matching
  *    the ~6-7m the code itself scans from. A code nobody can read the
@@ -47,11 +50,9 @@ export interface JoinScreenProps {
   churchName?: string;
   /** Languages to cycle. One language renders static, with no rings. */
   langs: string[];
-  /** Fills its container rather than sitting at a fixed preview width. */
-  fill?: boolean;
 }
 
-export default function JoinScreen({ url, churchName, langs, fill }: JoinScreenProps) {
+export default function JoinScreen({ url, churchName, langs }: JoinScreenProps) {
   const [active, setActive] = useState(0);
   const [rings, setRings] = useState<number[]>([]);
   const seq = useRef(0);
@@ -73,7 +74,7 @@ export default function JoinScreen({ url, churchName, langs, fill }: JoinScreenP
   const shown = url.replace(/^https?:\/\//, "");
 
   return (
-    <div className={`js-screen${fill ? " js-fill" : ""}`}>
+    <div className="js-screen">
       <div className="js-qrwrap">
         <div className="js-rings">
           <span className="js-ring steady" />
@@ -354,7 +355,6 @@ export const JOIN_SCREEN_CSS = `
   color:${TEXT};display:flex;align-items:center;justify-content:center;
   gap:7cqh;padding:7cqh 6.5cqh;
 }
-.js-screen.js-fill{height:100%;aspect-ratio:auto}
 .js-screen::after{content:"";position:absolute;inset:3.2cqh;border:1px solid rgba(196,181,253,.16);pointer-events:none}
 
 .js-rings{position:absolute;inset:0;pointer-events:none;z-index:0}
