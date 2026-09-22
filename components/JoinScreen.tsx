@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { QRCodeCanvas, QRCodeSVG } from "qrcode.react";
 
 /**
@@ -117,25 +117,27 @@ export function JoinQRSource({ url, refEl }: { url: string; refEl: React.RefObje
   );
 }
 
-/**
- * Static 1920x1080 PNG for one language. A still cannot cycle, so each language
- * gets its own file — which is the behaviour the settings page already had.
- */
-export function renderJoinPNG(opts: {
-  qrCanvas: HTMLCanvasElement;
-  url: string;
-  churchName?: string;
-  lang: string;
-}): string {
-  const { qrCanvas, url, churchName, lang } = opts;
-  const W = 1920;
-  const H = 1080;
-  const u = (v: number) => (v * H) / 100; // cqh -> px, identical units to the CSS
-  const out = document.createElement("canvas");
-  out.width = W;
-  out.height = H;
-  const ctx = out.getContext("2d")!;
+export const LOOP_TURN_MS = TURN_MS;
+const RING_MS = 2600;
 
+/**
+ * Draw one frame of the join screen onto a 2D context, as a pure function of
+ * time. Both outputs come through here — the PNG is this at t=0, the video is
+ * this sampled per frame — so there is ONE drawing path rather than a separate
+ * still renderer and a separate video renderer that can drift apart.
+ *
+ * Deliberately not rendered server-side: the design would then exist a third
+ * time (CSS, canvas, and something in Python), and two copies is already what
+ * let the old branded poster stay live after it had supposedly been replaced.
+ */
+export function drawJoinFrame(
+  ctx: CanvasRenderingContext2D,
+  opts: { t: number; url: string; churchName?: string; langs: string[]; W: number; H: number },
+) {
+  const { t, url, churchName, langs, W, H } = opts;
+  const u = (v: number) => (v * H) / 100; // cqh -> px, identical units to the CSS
+
+  ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = GROUND;
   ctx.fillRect(0, 0, W, H);
 
@@ -164,15 +166,45 @@ export function renderJoinPNG(opts: {
   const blockW = qr + pad * 2 + gap + textW;
   const qrX = (W - blockW) / 2;
   const qrY = (H - (qr + pad * 2)) / 2;
+  const cx = qrX + (qr + pad * 2) / 2;
+  const cy = qrY + (qr + pad * 2) / 2;
+
+  // Rings pulse from behind the code on each language turn. Drawn BEFORE the
+  // panel so they can never cross the code itself.
+  const cycling = langs.length > 1;
+  if (cycling) {
+    const phase = t % LOOP_TURN_MS;
+    const base = qr / 2;
+    for (const seed of [0.09, 0.05]) {
+      ctx.strokeStyle = `rgba(139,92,246,${seed})`;
+      ctx.lineWidth = u(0.28);
+      ctx.beginPath();
+      ctx.arc(cx, cy, base * (seed === 0.09 ? 1.22 : 1.5), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    if (phase < RING_MS) {
+      const p = phase / RING_MS;
+      // Matches the CSS cubic-bezier(.22,.7,.3,1) closely enough to read the same.
+      const eased = 1 - Math.pow(1 - p, 3);
+      ctx.strokeStyle = `rgba(139,92,246,${0.38 * (1 - p)})`;
+      ctx.lineWidth = u(0.28);
+      ctx.beginPath();
+      ctx.arc(cx, cy, base * (0.98 + eased * 0.87), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
 
   ctx.fillStyle = PANEL;
   ctx.beginPath();
   ctx.roundRect(qrX, qrY, qr + pad * 2, qr + pad * 2, u(1.1));
   ctx.fill();
-  ctx.drawImage(qrCanvas, qrX + pad, qrY + pad, qr, qr);
 
   const tx = qrX + qr + pad * 2 + gap;
-  const c = JOIN_COPY[lang] ?? JOIN_COPY.en;
+  const idx = cycling ? Math.floor(t / LOOP_TURN_MS) % langs.length : 0;
+  const c = JOIN_COPY[langs[idx]] ?? JOIN_COPY.en;
+
+  // Cross-fade the instruction the way the CSS transition does.
+  const into = cycling ? Math.min((t % LOOP_TURN_MS) / 550, 1) : 1;
   let ty = H / 2 - u(4);
 
   if (churchName) {
@@ -187,25 +219,128 @@ export function renderJoinPNG(opts: {
     ty += u(8);
   }
 
+  ctx.save();
+  ctx.globalAlpha = into;
+  ctx.translate(0, (1 - into) * u(1.2));
   ctx.textAlign = "left";
   ctx.fillStyle = TEXT;
   ctx.font = `600 ${u(8)}px Archivo, system-ui, sans-serif`;
   ctx.fillText(c.say, tx, ty);
-  ty += u(3.4);
-
   ctx.fillStyle = DIM;
   ctx.font = `${u(2.1)}px Archivo, system-ui, sans-serif`;
   ctx.letterSpacing = `${u(0.4)}px`;
-  ctx.fillText(c.tag.toUpperCase(), tx, ty);
+  ctx.fillText(c.tag.toUpperCase(), tx, ty + u(3.4));
   ctx.letterSpacing = "0px";
+  ctx.restore();
 
   ctx.fillStyle = LILAC;
   ctx.globalAlpha = 0.82;
   ctx.font = `${u(3.1)}px Archivo, system-ui, sans-serif`;
-  ctx.fillText(url.replace(/^https?:\/\//, ""), tx, ty + u(6));
+  ctx.fillText(url.replace(/^https?:\/\//, ""), tx, ty + u(9.4));
   ctx.globalAlpha = 1;
+}
 
+/**
+ * Static 1920x1080 PNG — the frame at t=0, so it cannot drift from the video.
+ * Kept as the fallback for browsers that cannot record.
+ */
+export function renderJoinPNG(opts: {
+  qrCanvas: HTMLCanvasElement;
+  url: string;
+  churchName?: string;
+  lang: string;
+}): string {
+  const W = 1920;
+  const H = 1080;
+  const out = document.createElement("canvas");
+  out.width = W;
+  out.height = H;
+  const ctx = out.getContext("2d")!;
+  drawJoinFrame(ctx, { t: 0, url: opts.url, churchName: opts.churchName, langs: [opts.lang], W, H });
+  const qrSize = H * 0.66;
+  const qrPad = H * 0.015;
+  const qrX = (W - (qrSize + qrPad * 2 + H * 0.07 + 760)) / 2;
+  const qrY = (H - (qrSize + qrPad * 2)) / 2;
+  ctx.drawImage(opts.qrCanvas, qrX + qrPad, qrY + qrPad, qrSize, qrSize);
   return out.toDataURL("image/png");
+}
+
+/** Which container the browser will actually give us, MP4 first. */
+export function pickVideoType(): { mimeType: string; ext: string } | null {
+  if (typeof window === "undefined" || typeof MediaRecorder === "undefined") return null;
+  const candidates = [
+    // ProPresenter plays H.264 MP4/MOV. WebM is the fallback only because some
+    // browsers still cannot record MP4 — it may not import cleanly.
+    { mimeType: "video/mp4;codecs=avc1.42E01E", ext: "mp4" },
+    { mimeType: "video/mp4", ext: "mp4" },
+    { mimeType: "video/webm;codecs=vp9", ext: "webm" },
+    { mimeType: "video/webm", ext: "webm" },
+  ];
+  return candidates.find((c) => MediaRecorder.isTypeSupported(c.mimeType)) ?? null;
+}
+
+/**
+ * Record one full loop of the animation at 1920x1080 and resolve a Blob.
+ *
+ * Recorded in real time from a canvas rather than encoded frame-by-frame: the
+ * alternative is shipping ffmpeg.wasm (~25MB) for a file generated a handful of
+ * times a year. The trade is that a 2-language loop takes its own 7.6s to
+ * produce, which is why the caller shows progress.
+ */
+export function recordJoinLoop(opts: {
+  qrCanvas: HTMLCanvasElement;
+  url: string;
+  churchName?: string;
+  langs: string[];
+  onProgress?: (fraction: number) => void;
+}): Promise<{ blob: Blob; ext: string }> {
+  const { qrCanvas, url, churchName, langs, onProgress } = opts;
+  const W = 1920;
+  const H = 1080;
+  const loopMs = Math.max(langs.length, 1) * LOOP_TURN_MS;
+
+  const picked = pickVideoType();
+  if (!picked) return Promise.reject(new Error("This browser cannot record video."));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  const qrX = (W - (1080 * 0.66 + (1080 * 0.015) * 2 + 1080 * 0.07 + 760)) / 2;
+  const qrSize = 1080 * 0.66;
+  const qrPad = 1080 * 0.015;
+  const qrY = (H - (qrSize + qrPad * 2)) / 2;
+
+  const stream = canvas.captureStream(30);
+  const rec = new MediaRecorder(stream, { mimeType: picked.mimeType, videoBitsPerSecond: 6_000_000 });
+  const chunks: BlobPart[] = [];
+  rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+
+  return new Promise((resolve, reject) => {
+    rec.onerror = () => reject(new Error("Recording failed."));
+    rec.onstop = () => resolve({ blob: new Blob(chunks, { type: picked.mimeType }), ext: picked.ext });
+
+    const started = performance.now();
+    let raf = 0;
+    const tick = () => {
+      const t = performance.now() - started;
+      if (t >= loopMs) {
+        cancelAnimationFrame(raf);
+        rec.stop();
+        stream.getTracks().forEach((tr) => tr.stop());
+        return;
+      }
+      drawJoinFrame(ctx, { t, url, churchName, langs, W, H });
+      // The code is drawn on top of the frame every tick so it is never
+      // occluded by a ring or a fade.
+      ctx.drawImage(qrCanvas, qrX + qrPad, qrY + qrPad, qrSize, qrSize);
+      onProgress?.(t / loopMs);
+      raf = requestAnimationFrame(tick);
+    };
+
+    rec.start();
+    raf = requestAnimationFrame(tick);
+  });
 }
 
 export const JOIN_SCREEN_CSS = `

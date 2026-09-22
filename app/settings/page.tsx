@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import JoinScreen, { JoinQRSource, renderJoinPNG, JOIN_COPY } from "@/components/JoinScreen";
+import JoinScreen, { JoinQRSource, renderJoinPNG, pickVideoType, recordJoinLoop } from "@/components/JoinScreen";
 import { api, getChurchId } from "@/lib/api";
 import { SUPPORTED_LANGUAGES, getLangName } from "@/lib/languages";
 
@@ -91,21 +91,64 @@ export default function SettingsPage() {
   const joinUrl = slug ? `${origin}/join/${slug}` : "";
   const qrDownloadRef = useRef<HTMLDivElement>(null);
   const joinPreviewRef = useRef<HTMLDivElement>(null);
+  const [recording, setRecording] = useState(false);
+  const [recordPct, setRecordPct] = useState(0);
+  const [videoNote, setVideoNote] = useState<string | null>(null);
 
   /**
-   * One PNG per language. A still cannot cycle through languages the way the
-   * live screen does, so each gets its own file — the behaviour this page
-   * already had. Rendering lives in components/JoinScreen so the poster exists
-   * in one place; a second divergent copy here is what let the old branded
-   * 340px version stay live after the design was reworked elsewhere.
+   * Download one loop of the animation as a video.
+   *
+   * Recorded in real time from a canvas rather than encoded frame-by-frame or
+   * rendered server-side. Frame-by-frame would mean shipping ffmpeg.wasm (~25MB)
+   * for a file made a few times a year; server-side would put the design in a
+   * THIRD place after the CSS and the canvas, and two copies is already what let
+   * the old branded poster stay live after it was supposedly replaced.
+   *
+   * The trade is that the recording takes as long as the loop it captures, which
+   * is why this reports progress rather than just disabling the button.
    */
-  function downloadPNG(lang: string) {
+  async function downloadVideo() {
     const qrCanvas = qrDownloadRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
-    if (!qrCanvas || !joinUrl) return;
-    const link = document.createElement("a");
-    link.download = `join-${slug || "church"}-${lang}.png`;
-    link.href = renderJoinPNG({ qrCanvas, url: joinUrl, churchName, lang });
-    link.click();
+    if (!qrCanvas || !joinUrl || recording) return;
+
+    const picked = pickVideoType();
+    if (!picked) {
+      // No recorder at all — fall back to a still so the button is never a dead end.
+      const link = document.createElement("a");
+      link.download = `join-${slug || "church"}-${churchLanguages[0] ?? "en"}.png`;
+      link.href = renderJoinPNG({ qrCanvas, url: joinUrl, churchName, lang: churchLanguages[0] ?? "en" });
+      link.click();
+      setVideoNote("This browser cannot record video — downloaded a still image instead.");
+      return;
+    }
+
+    setRecording(true);
+    setRecordPct(0);
+    setVideoNote(null);
+    try {
+      const { blob, ext } = await recordJoinLoop({
+        qrCanvas,
+        url: joinUrl,
+        churchName,
+        langs: churchLanguages,
+        onProgress: (f) => setRecordPct(Math.round(f * 100)),
+      });
+      const link = document.createElement("a");
+      link.download = `join-${slug || "church"}.${ext}`;
+      link.href = URL.createObjectURL(blob);
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+      if (ext !== "mp4") {
+        setVideoNote(
+          "Your browser recorded WebM rather than MP4. ProPresenter may not import it — " +
+            "try Chrome or Safari for an MP4, or use the full-screen view directly.",
+        );
+      }
+    } catch (err) {
+      setVideoNote(err instanceof Error ? err.message : "Recording failed.");
+    } finally {
+      setRecording(false);
+    }
   }
 
   function openFullScreen() {
@@ -286,19 +329,25 @@ export default function SettingsPage() {
               >
                 Show full screen
               </button>
-              {churchLanguages.map((lang) => (
-                <button
-                  key={lang}
-                  onClick={() => downloadPNG(lang)}
-                  className="px-4 py-2 rounded border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition"
-                >
-                  PNG — {JOIN_COPY[lang]?.tag ?? lang}
-                </button>
-              ))}
+              <button
+                onClick={downloadVideo}
+                disabled={recording}
+                className="px-4 py-2 rounded border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition disabled:opacity-50"
+              >
+                {recording ? `Recording ${recordPct}%…` : "Download video"}
+              </button>
             </div>
+            {recording && (
+              <div className="h-1.5 bg-gray-100 rounded overflow-hidden" role="status" aria-live="polite">
+                <div className="h-full bg-violet-500 transition-all duration-200" style={{ width: `${recordPct}%` }} />
+              </div>
+            )}
+            {videoNote && <p className="text-xs text-amber-700">{videoNote}</p>}
             <p className="text-xs text-gray-500">
               Full screen animates between {churchLanguages.length} language
-              {churchLanguages.length === 1 ? "" : "s"} — use it on a TV. The PNGs are stills, one per language.
+              {churchLanguages.length === 1 ? "" : "s"} — use it on a TV directly. The video is one full loop
+              ({((churchLanguages.length * 3.8)).toFixed(1)}s) at 1920×1080, for ProPresenter or anywhere a
+              file is needed; recording it takes about that long.
             </p>
           </div>
         )}
