@@ -52,6 +52,18 @@ export default function SyncPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ songs_created: number; songs_skipped: number; items: SyncResultItem[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Real per-song progress. The whole playlist used to go up as ONE request
+   * while the button said "Syncing…" — the backend fetches every presentation
+   * from ProPresenter and translates each one, so for a dozen songs that is a
+   * long silence with no sense of scale or whether it is still alive.
+   *
+   * Sending them one at a time is safe because dedupe lives in PREVIEW
+   * (`already_exists`), not in sync: if this partially completes, re-previewing
+   * correctly excludes what was already created, so a retry resumes instead of
+   * duplicating. It also means one bad song no longer loses the whole batch.
+   */
+  const [progress, setProgress] = useState<{ done: number; total: number; current: string } | null>(null);
 
   useEffect(() => {
     api.proPresenterPlaylists()
@@ -99,26 +111,54 @@ export default function SyncPage() {
     if (!items || isSyncing) return;
     setIsSyncing(true);
     setError(null);
-    try {
-      const payload = {
-        playlist_id: selectedPlaylist,
-        translate_to: translateTo,
-        items: items
-          .filter((i) => i.action === "add")
-          .map((i) => ({
-            uuid: i.uuid,
-            name: i.user_name ?? i.name,
-            detected_lang: i.user_lang ?? i.detected_lang ?? "es",
-            skip: i.user_skip ?? false,
-          })),
-      };
-      const result = await api.syncPropresenterPlaylist(payload) as typeof syncResult;
-      setSyncResult(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sync failed");
-    } finally {
-      setIsSyncing(false);
+
+    const queue = items
+      .filter((i) => i.action === "add" && !i.user_skip)
+      .map((i) => ({
+        uuid: i.uuid,
+        name: i.user_name ?? i.name,
+        detected_lang: i.user_lang ?? i.detected_lang ?? "es",
+        skip: false,
+      }));
+
+    const merged = { songs_created: 0, songs_skipped: 0, items: [] as SyncResultItem[] };
+    const failures: string[] = [];
+
+    for (let n = 0; n < queue.length; n++) {
+      const song = queue[n];
+      setProgress({ done: n, total: queue.length, current: song.name });
+      try {
+        const result = (await api.syncPropresenterPlaylist({
+          playlist_id: selectedPlaylist,
+          translate_to: translateTo,
+          items: [song],
+        })) as NonNullable<typeof syncResult>;
+        merged.songs_created += result.songs_created ?? 0;
+        merged.songs_skipped += result.songs_skipped ?? 0;
+        merged.items.push(...(result.items ?? []));
+      } catch (err) {
+        // One failure must not discard the songs that already succeeded.
+        failures.push(song.name);
+        merged.items.push({
+          name: song.name,
+          action: "skipped",
+          reason: err instanceof Error ? err.message : "sync_failed",
+        } as SyncResultItem);
+      }
+      // Show the finished count, not the in-flight one.
+      setProgress({ done: n + 1, total: queue.length, current: song.name });
     }
+
+    setSyncResult(merged);
+    if (failures.length) {
+      setError(
+        `${failures.length} of ${queue.length} failed: ${failures.slice(0, 3).join(", ")}` +
+          (failures.length > 3 ? `, and ${failures.length - 3} more` : "") +
+          ". Preview again to retry just those — songs already created are skipped.",
+      );
+    }
+    setProgress(null);
+    setIsSyncing(false);
   };
 
   return (
@@ -254,13 +294,43 @@ export default function SyncPage() {
             </tbody>
           </table>
 
+          {/* Determinate, because syncing one song at a time means the count is
+              genuinely known. Names the song in flight so a slow one is
+              identifiable rather than just "still going". */}
+          {progress && (
+            <div className="pt-3" role="status" aria-live="polite">
+              <div className="flex items-baseline justify-between text-sm mb-1.5">
+                <span className="text-gray-700">
+                  Syncing {progress.done} of {progress.total}
+                  {progress.current ? <span className="text-gray-500"> — {progress.current}</span> : null}
+                </span>
+                <span className="text-gray-500 tabular-nums">
+                  {Math.round((progress.done / Math.max(progress.total, 1)) * 100)}%
+                </span>
+              </div>
+              <div className="h-1.5 bg-gray-100 rounded overflow-hidden">
+                <div
+                  className="h-full bg-purple-500 transition-all duration-300"
+                  style={{ width: `${(progress.done / Math.max(progress.total, 1)) * 100}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1.5">
+                Each song is fetched from ProPresenter and translated, so this takes a few seconds apiece.
+              </p>
+            </div>
+          )}
+
           <div className="flex justify-end pt-2">
             <button
               onClick={handleSync}
               disabled={toAddCount === 0 || isSyncing}
               className="bg-purple-600 text-white px-5 py-2 rounded font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSyncing ? "Syncing…" : `Sync ${toAddCount} song${toAddCount !== 1 ? "s" : ""}`}
+              {isSyncing
+                ? progress
+                  ? `Syncing ${progress.done}/${progress.total}…`
+                  : "Syncing…"
+                : `Sync ${toAddCount} song${toAddCount !== 1 ? "s" : ""}`}
             </button>
           </div>
         </div>
